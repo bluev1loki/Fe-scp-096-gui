@@ -1,0 +1,42 @@
+-- SCP_AttackHandler.lua (ServerScriptService)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local REMOTE_EVENT_NAME = "SCP_AttackEvent"
+local ATTACK_RANGE = 6
+local ATTACK_DAMAGE = 20
+local ATTACK_COOLDOWN = 1.2
+
+local remote = ReplicatedStorage:FindFirstChild(REMOTE_EVENT_NAME)
+if not remote then
+	remote = Instance.new("RemoteEvent")
+	remote.Name = REMOTE_EVENT_NAME
+	remote.Parent = ReplicatedStorage
+end
+
+local lastAttack = {}
+
+remote.OnServerEvent:Connect(function(player, originPos, lookVector)
+	local now = tick()
+	if lastAttack[player] and now - lastAttack[player] < ATTACK_COOLDOWN then return end
+	lastAttack[player] = now
+
+	local char = player.Character
+	if not char then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	local origin = originPos or root.Position
+
+	for _,plr in pairs(Players:GetPlayers()) do
+		if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+			local otherRoot = plr.Character.HumanoidRootPart
+			local dist = (otherRoot.Position - origin).Magnitude
+			if dist <= ATTACK_RANGE then
+				local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
+				if humanoid and humanoid.Health > 0 then
+					humanoid:TakeDamage(ATTACK_DAMAGE)
+				end
+			end
+		end
+	end
+end)

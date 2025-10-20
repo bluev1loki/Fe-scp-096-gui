@@ -1,0 +1,200 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+local TRANSFORM_WALKSPEED = 40
+local TRANSFORM_JUMPPOWER = 75
+local TRANSFORM_HIPHEIGHT = 2
+local SCREAM_SOUND_ID = "rbxassetid://183860253"
+local AUTO_TRANSFORM_DEFAULT = false
+local original = {}
+local autoTransformEnabled = AUTO_TRANSFORM_DEFAULT
+local function waitForChildOfClass(parent, className, timeout)
+	local t0 = tick()
+	local obj = parent:FindFirstChildOfClass(className)
+	while not obj and tick() - t0 < (timeout or 5) do
+		parent.ChildAdded:Wait()
+		obj = parent:FindFirstChildOfClass(className)
+	end
+	return obj
+end
+local function saveOriginals(character)
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+	original.walkSpeed = humanoid.WalkSpeed
+	original.jumpPower = humanoid.JumpPower ~= 0 and humanoid.JumpPower or 50
+	original.hipHeight = humanoid.HipHeight
+	local head = character:FindFirstChild("Head")
+	if head then
+		local face = head:FindFirstChild("face") or head:FindFirstChildWhichIsA("Decal")
+		original.face = face and {Name = face.Name, Texture = face.Texture} or nil
+	end
+	local bc = character:FindFirstChild("Body Colors") or character:FindFirstChildWhichIsA("BodyColors")
+	if bc then
+		original.bodyColors = {}
+		for _,v in pairs(bc:GetChildren()) do
+			original.bodyColors[v.Name] = v.Value
+		end
+	else
+		original.bodyColors = nil
+	end
+end
+local function applyTransform(character)
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+	if not original.walkSpeed then saveOriginals(character) end
+	humanoid.WalkSpeed = TRANSFORM_WALKSPEED
+	humanoid.JumpPower = TRANSFORM_JUMPPOWER
+	if humanoid.HipHeight then humanoid.HipHeight = TRANSFORM_HIPHEIGHT end
+	for _, part in pairs(character:GetDescendants()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			original.partColors = original.partColors or {}
+			if not original.partColors[part:GetFullName()] then
+				original.partColors[part:GetFullName()] = {Color = part.Color, Transparency = part.Transparency, Material = part.Material}
+			end
+			part.Color = Color3.fromRGB(240,240,250)
+			if part ~= character:FindFirstChild("Head") then
+				part.Transparency = math.clamp(part.Transparency + 0.05, 0, 0.4)
+			end
+		end
+	end
+	local head = character:FindFirstChild("Head")
+	if head then
+		local face = head:FindFirstChild("face") or head:FindFirstChildWhichIsA("Decal")
+		if face then face.Transparency = 1 end
+		local sound = Instance.new("Sound")
+		sound.Name = "SCP096Scream_Local"
+		sound.SoundId = SCREAM_SOUND_ID
+		sound.Looped = false
+		sound.RollOffMode = Enum.RollOffMode.InverseTapered
+		sound.Parent = head
+		sound:Play()
+		game:GetService("Debris"):AddItem(sound, 8)
+	end
+end
+local function restoreOriginals(character)
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		if original.walkSpeed then humanoid.WalkSpeed = original.walkSpeed end
+		if original.jumpPower then humanoid.JumpPower = original.jumpPower end
+		if original.hipHeight then humanoid.HipHeight = original.hipHeight end
+	end
+	local head = character:FindFirstChild("Head")
+	if head then
+		local face = head:FindFirstChild("face") or head:FindFirstChildWhichIsA("Decal")
+		if face and original.face then
+			face.Transparency = 0
+		elseif face and not original.face then
+			face.Transparency = 0
+		end
+	end
+	if original.partColors then
+		for _, part in pairs(character:GetDescendants()) do
+			if part:IsA("BasePart") then
+				local data = original.partColors[part:GetFullName()]
+				if data then
+					part.Color = data.Color
+					part.Transparency = data.Transparency
+					part.Material = data.Material
+				end
+			end
+		end
+	end
+	original = {}
+end
+local playerGui = player:WaitForChild("PlayerGui")
+local existing = playerGui:FindFirstChild("SCP096_GUI")
+if existing then existing:Destroy() end
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SCP096_GUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "Main"
+mainFrame.Size = UDim2.new(0, 220, 0, 140)
+mainFrame.Position = UDim2.new(0, 20, 0, 60)
+mainFrame.BackgroundTransparency = 0.25
+mainFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+mainFrame.Active = true
+mainFrame.Draggable = true
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Size = UDim2.new(1, -10, 0, 32)
+title.Position = UDim2.new(0, 5, 0, 5)
+title.BackgroundTransparency = 1
+title.Text = "SCP-096 — Verwandlung"
+title.TextColor3 = Color3.fromRGB(230,230,230)
+title.Font = Enum.Font.SourceSansBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = mainFrame
+local btnTransform = Instance.new("TextButton")
+btnTransform.Name = "TransformBtn"
+btnTransform.Size = UDim2.new(0, 200, 0, 36)
+btnTransform.Position = UDim2.new(0, 10, 0, 42)
+btnTransform.Text = "Verwandeln"
+btnTransform.Font = Enum.Font.SourceSans
+btnTransform.TextSize = 18
+btnTransform.Parent = mainFrame
+local toggleLabel = Instance.new("TextLabel")
+toggleLabel.Size = UDim2.new(0, 140, 0, 24)
+toggleLabel.Position = UDim2.new(0, 10, 0, 84)
+toggleLabel.BackgroundTransparency = 1
+toggleLabel.Text = "Auto-Transform bei Respawn:"
+toggleLabel.TextColor3 = Color3.fromRGB(220,220,220)
+toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+toggleLabel.Font = Enum.Font.SourceSans
+toggleLabel.TextSize = 14
+toggleLabel.Parent = mainFrame
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0, 56, 0, 24)
+toggleBtn.Position = UDim2.new(0, 150, 0, 84)
+toggleBtn.Text = autoTransformEnabled and "AN" or "AUS"
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextSize = 14
+toggleBtn.Parent = mainFrame
+local btnReset = Instance.new("TextButton")
+btnReset.Name = "ResetBtn"
+btnReset.Size = UDim2.new(0, 200, 0, 24)
+btnReset.Position = UDim2.new(0, 10, 0, 112)
+btnReset.Text = "Zurücksetzen"
+btnReset.Font = Enum.Font.SourceSans
+btnReset.TextSize = 14
+btnReset.Parent = mainFrame
+local function transformPlayerNow()
+	local char = player.Character or player.CharacterAdded and player.CharacterAdded:Wait()
+	applyTransform(char)
+end
+local function resetPlayerNow()
+	local char = player.Character
+	if char then restoreOriginals(char) end
+end
+btnTransform.MouseButton1Click:Connect(function() transformPlayerNow() end)
+btnReset.MouseButton1Click:Connect(function() resetPlayerNow() end)
+toggleBtn.MouseButton1Click:Connect(function()
+	autoTransformEnabled = not autoTransformEnabled
+	toggleBtn.Text = autoTransformEnabled and "AN" or "AUS"
+end)
+player.CharacterAdded:Connect(function(char)
+	if autoTransformEnabled then
+		waitForChildOfClass(char, "Humanoid", 5)
+		wait(0.2)
+		applyTransform(char)
+	else
+		wait(0.2)
+		restoreOriginals(char)
+	end
+end)
+if player.Character then saveOriginals(player.Character) end
+local hint = Instance.new("TextLabel")
+hint.Size = UDim2.new(0, 200, 0, 18)
+hint.Position = UDim2.new(0, 10, 0, 36)
+hint.BackgroundTransparency = 1
+hint.Font = Enum.Font.SourceSansItalic
+hint.TextSize = 12
+hint.TextColor3 = Color3.fromRGB(200,200,200)
+hint.Text = "LocalPreview — kosmetisch & clientseitig"
+hint.Parent = mainFrame

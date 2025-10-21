@@ -1,0 +1,348 @@
+loadstring([[-- SCP096_all_in_one_client.lua
+-- Kombinierter LocalScript-Loadstring (Tools, GUI, Psycho-Mode, Effekte)
+-- Achtung: Lang. Füge komplett in einen Gist oder führe direkt im Executor aus.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
+local Lighting = game:GetService("Lighting")
+
+local player = Players.LocalPlayer
+if not player then return end
+
+-- Config
+local AUTO_EQUIP = true
+local LOCK_MOVEMENT = true
+local RESPAWN_REBUILD = true
+local REMOTE_ATTACK_NAME = "SCP_AttackEvent"
+local REMOTE_DASH_NAME = "SCP_DashEvent"
+local DAMAGE_PER_HIT = 100
+local ATTACK_RANGE_BASE = 6
+local MAX_COMBO_LEVEL = 3
+
+-- Tools definitions
+local TOOLS_DEF = {
+	{ Name = "Psy_ClawSwipe",    Display = "ClawSwipe", ToolId = "ATK1" },
+	{ Name = "Psy_NeckSnap",     Display = "NeckSnap",  ToolId = "ATK2" },
+	{ Name = "Psy_Leap",         Display = "Leap",      ToolId = "ATK3" },
+	{ Name = "Psy_HeadRip",      Display = "HeadRip",   ToolId = "ATK4" },
+	{ Name = "Psy_ScreamStun",   Display = "Scream",    ToolId = "ATK5" }
+}
+
+-- Assets (replace if you have better IDs)
+local SCREAM_SOUND_ID = "rbxassetid://183860253"
+local ATTACK_ANIM_IDS = {
+	"rbxassetid://507766666",
+	"rbxassetid://507766667",
+	"rbxassetid://507766668"
+}
+local HEAVY_ANIM_ID = "rbxassetid://507766669"
+local DASH_ANIM_ID = "rbxassetid://507766700"
+local ATTACK_SFX_ID = "rbxassetid://12221967"
+local PARTICLE_TEXTURE = "rbxassetid://243660709"
+
+-- State
+local remoteAttack, remoteDash
+local createdTools = {}
+local psychoActive = false
+local originalMovement = {}
+
+-- Utilities
+local function ensureRemotes()
+	if not ReplicatedStorage then return end
+	if not ReplicatedStorage:FindFirstChild(REMOTE_ATTACK_NAME) then
+		local e = Instance.new("RemoteEvent"); e.Name = REMOTE_ATTACK_NAME; e.Parent = ReplicatedStorage
+	end
+	if not ReplicatedStorage:FindFirstChild(REMOTE_DASH_NAME) then
+		local d = Instance.new("RemoteEvent"); d.Name = REMOTE_DASH_NAME; d.Parent = ReplicatedStorage
+	end
+	remoteAttack = ReplicatedStorage:FindFirstChild(REMOTE_ATTACK_NAME)
+	remoteDash = ReplicatedStorage:FindFirstChild(REMOTE_DASH_NAME)
+end
+
+local function playerByUserId(uid)
+	for _,p in pairs(Players:GetPlayers()) do if p.UserId == uid then return p end end
+	return nil
+end
+
+local function waitForChildOfClass(parent, className, timeout)
+	local t0 = tick()
+	local obj = parent:FindFirstChildOfClass(className)
+	while not obj and tick() - t0 < (timeout or 5) do parent.ChildAdded:Wait(); obj = parent:FindFirstChildOfClass(className) end
+	return obj
+end
+
+-- Movement lock/unlock
+local function lockMovement(character)
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+	originalMovement.WalkSpeed = humanoid.WalkSpeed
+	originalMovement.JumpPower = humanoid.JumpPower
+	pcall(function() humanoid.WalkSpeed = 0 end)
+	pcall(function() humanoid.JumpPower = 0 end)
+end
+local function unlockMovement(character)
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		pcall(function() if originalMovement.WalkSpeed then humanoid.WalkSpeed = originalMovement.WalkSpeed end end)
+		pcall(function() if originalMovement.JumpPower then humanoid.JumpPower = originalMovement.JumpPower end end)
+		originalMovement = {}
+	end
+end
+
+-- Client-side target prefilter: NOT_SAME_TEAM
+local function findTargets(originPos, radius)
+	local targets = {}
+	for _,plr in pairs(Players:GetPlayers()) do
+		if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+			local sameTeam = false
+			pcall(function() if plr.Team and player.Team and plr.Team == player.Team then sameTeam = true end end)
+			if not sameTeam then
+				local root = plr.Character:FindFirstChild("HumanoidRootPart")
+				if root and (root.Position - originPos).Magnitude <= radius then table.insert(targets, plr.UserId) end
+			end
+		end
+	end
+	return targets
+end
+
+-- send remotes (patched: includes toolId param)
+local function sendAttackRemote(originPos, lookVector, comboLevel, targetUserIds, toolId)
+	ensureRemotes()
+	if not remoteAttack then return end
+	pcall(function() remoteAttack:FireServer(originPos, lookVector, comboLevel or 1, targetUserIds or {}, toolId or "") end)
+end
+local function sendDashRemote(originPos, dir)
+	ensureRemotes()
+	if not remoteDash then return end
+	pcall(function() remoteDash:FireServer(originPos, dir) end)
+end
+
+-- Tool creation
+local function createTool(def)
+	local backpack = player:FindFirstChild("Backpack") or player:WaitForChild("Backpack", 5)
+	if not backpack then return nil end
+	local existing = backpack:FindFirstChild(def.Name)
+	if existing then pcall(function() existing:Destroy() end) end
+
+	local tool = Instance.new("Tool")
+	tool.Name = def.Name
+	tool.RequiresHandle = false
+	tool.CanBeDropped = false
+	tool.Parent = backpack
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"; handle.Size = Vector3.new(1,1,1); handle.Transparency = 1; handle.CanCollide = false; handle.Parent = tool
+
+	tool.Activated:Connect(function()
+		local char = player.Character
+		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+		local root = char.HumanoidRootPart
+		local origin = root.Position
+		local look = root.CFrame.LookVector
+
+		if def.ToolId == "ATK1" then
+			local radius = 6
+			local targets = findTargets(origin, radius)
+			sendAttackRemote(origin, look, 1, targets, "ATK1")
+		elseif def.ToolId == "ATK2" then
+			local radius = 5
+			local candidates = findTargets(origin, radius)
+			local nearest, nd = nil, math.huge
+			for _,uid in ipairs(candidates) do
+				local p = playerByUserId(uid)
+				if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+					local d = (p.Character.HumanoidRootPart.Position - origin).Magnitude
+					if d < nd then nearest, nd = uid, d end
+				end
+			end
+			if nearest then sendAttackRemote(origin, look, 2, {nearest}, "ATK2") end
+		elseif def.ToolId == "ATK3" then
+			local dir = look
+			pcall(function() local targetPos = root.Position + dir * 18; root.CFrame = CFrame.new(targetPos) end)
+			local targets = findTargets(root.Position, 5)
+			sendAttackRemote(root.Position, dir, 1, targets, "ATK3")
+			sendDashRemote(root.Position, dir)
+		elseif def.ToolId == "ATK4" then
+			local radius = 4
+			local candidates = findTargets(origin, radius)
+			local nearest, nd = nil, math.huge
+			for _,uid in ipairs(candidates) do
+				local p = playerByUserId(uid)
+				if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+					local d = (p.Character.HumanoidRootPart.Position - origin).Magnitude
+					if d < nd then nearest, nd = uid, d end
+				end
+			end
+			if nearest then sendAttackRemote(origin, look, 3, {nearest}, "ATK4") end
+		elseif def.ToolId == "ATK5" then
+			local radius = 8
+			local targets = findTargets(origin, radius)
+			sendAttackRemote(origin, look, 1, targets, "ATK5")
+		end
+	end)
+
+	createdTools[def.Name] = tool
+	return tool
+end
+
+local function buildAllTools()
+	local bp = player:FindFirstChild("Backpack") or player:WaitForChild("Backpack", 5)
+	if not bp then return end
+	for _,def in ipairs(TOOLS_DEF) do createTool(def) end
+	if AUTO_EQUIP then
+		local first = TOOLS_DEF[1]
+		local t = bp:FindFirstChild(first.Name)
+		if t and player.Character then local humanoid = player.Character:FindFirstChildOfClass("Humanoid"); pcall(function() if humanoid then humanoid:EquipTool(t) end end) end
+	end
+end
+
+-- Psycho core
+local function enablePsychoCore()
+	if psychoActive then return end
+	psychoActive = true
+	local char = player.Character
+	if char and LOCK_MOVEMENT then lockMovement(char) end
+	if AUTO_EQUIP then
+		local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+		for _,def in ipairs(TOOLS_DEF) do
+			local t = player.Backpack and player.Backpack:FindFirstChild(def.Name)
+			if t and humanoid then pcall(function() humanoid:EquipTool(t) end) end
+		end
+	end
+end
+local function disablePsychoCore()
+	if not psychoActive then return end
+	psychoActive = false
+	local char = player.Character
+	if char and LOCK_MOVEMENT then unlockMovement(char) end
+end
+
+-- Visual helpers (simplified, safe)
+local function spawnParticleBurst(pos, texture, amt, smin, smax)
+	local attach = Instance.new("Attachment"); attach.WorldPosition = pos
+	local pe = Instance.new("ParticleEmitter", attach)
+	pe.Texture = texture; pe.Lifetime = NumberRange.new(0.2,0.7); pe.Speed = NumberRange.new(smin or 6, smax or 12)
+	pe.Rate = 0; pe.RotSpeed = NumberRange.new(-180,180)
+	pe.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.6), NumberSequenceKeypoint.new(1,0)})
+	pe:Emit(amt or 30); Debris:AddItem(attach,1)
+end
+local function cameraShakeOnce(intensity, duration)
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	local orig = cam.CFrame; local t0 = tick()
+	local conn
+	conn = RunService.RenderStepped:Connect(function()
+		local dt = tick() - t0
+		if dt > duration then conn:Disconnect(); cam.CFrame = orig; return end
+		local pct = 1 - dt/duration
+		local x = (math.random()-0.5)*2*intensity*pct; local y = (math.random()-0.5)*2*intensity*pct; local z = (math.random()-0.5)*2*intensity*pct
+		cam.CFrame = orig * CFrame.new(x,y,z)
+	end)
+end
+local function screenFlash()
+	local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui")); gui.Name = "SCP_Flash"
+	local frame = Instance.new("Frame", gui); frame.Size = UDim2.new(1,0,1,0); frame.BackgroundColor3 = Color3.new(1,1,1); frame.BackgroundTransparency = 1
+	for i=1,6 do frame.BackgroundTransparency = 1 - i*0.15; wait(0.02) end
+	for i=1,6 do frame.BackgroundTransparency = i*0.15; wait(0.02) end
+	gui:Destroy()
+end
+
+local function playAnim(character, animId)
+	if not character or not animId then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then animator = Instance.new("Animator", humanoid) end
+	local anim = Instance.new("Animation"); anim.AnimationId = tostring(animId)
+	local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
+	if ok and track then track:Play(); track.Stopped:Connect(function() pcall(function() anim:Destroy() end) end) end
+end
+
+-- Hook tool visuals (simple)
+local function hookToolVisuals(tool)
+	if not tool or not tool:IsA("Tool") then return end
+	if tool:GetAttribute("SCP_VisualHooked") then return end
+	tool:SetAttribute("SCP_VisualHooked", true)
+	tool.Activated:Connect(function()
+		local char = player.Character
+		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+		local root = char.HumanoidRootPart; local pos = root.Position
+		local n = tool.Name
+		if n:match("Claw") then playAnim(char, ATTACK_ANIM_IDS[1]); spawnParticleBurst(pos + root.CFrame.LookVector*2, PARTICLE_TEXTURE, 28); cameraShakeOnce(0.6,0.3)
+		elseif n:match("Neck") then playAnim(char, ATTACK_ANIM_IDS[2]); cameraShakeOnce(1.0,0.45)
+		elseif n:match("Leap") then playAnim(char, DASH_ANIM_ID); cameraShakeOnce(0.9,0.45); spawnParticleBurst(pos, PARTICLE_TEXTURE, 36)
+		elseif n:match("HeadRip") then playAnim(char, HEAVY_ANIM_ID); screenFlash(); cameraShakeOnce(1.2,0.6); spawnParticleBurst(pos, PARTICLE_TEXTURE, 50)
+		elseif n:match("Scream") then playAnim(char, ATTACK_ANIM_IDS[1]); cameraShakeOnce(1.0,0.5); playAnim(char, ATTACK_ANIM_IDS[1])
+		else spawnParticleBurst(pos, PARTICLE_TEXTURE, 18); cameraShakeOnce(0.35,0.25) end
+	end)
+end
+
+local function hookAllTools()
+	for _,def in pairs(TOOLS_DEF) do
+		local tname = def.Name
+		local t = player.Backpack:FindFirstChild(tname) or (player.Character and player.Character:FindFirstChild(tname))
+		if t then pcall(function() hookToolVisuals(t) end) end
+	end
+end
+
+-- Build GUI (center panel, dark)
+local function buildMainPanel()
+	local pg = player:WaitForChild("PlayerGui")
+	local existing = pg:FindFirstChild("SCP096_GUI_PANEL")
+	if existing then existing:Destroy() end
+	local screenGui = Instance.new("ScreenGui", pg); screenGui.Name = "SCP096_GUI_PANEL"; screenGui.ResetOnSpawn = false
+	local frame = Instance.new("Frame", screenGui); frame.Size = UDim2.new(0,520,0,320); frame.AnchorPoint = Vector2.new(0.5,0.5); frame.Position = UDim2.new(0.5,0.5,0.5,0)
+	frame.BackgroundColor3 = Color3.fromRGB(12,12,12); frame.BackgroundTransparency = 0.12; frame.BorderSizePixel = 0; frame.Active = true; frame.Draggable = true
+
+	local title = Instance.new("TextLabel", frame); title.Size = UDim2.new(1,-24,0,36); title.Position = UDim2.new(0,12,0,8); title.BackgroundTransparency = 1
+	title.Text = "SCP-096 — Psycho Panel"; title.Font = Enum.Font.GothamBold; title.TextColor3 = Color3.fromRGB(235,235,235); title.TextSize = 20; title.TextXAlignment = Enum.TextXAlignment.Left
+
+	-- Buttons
+	local idx = 0
+	for _,def in ipairs(TOOLS_DEF) do
+		idx = idx + 1
+		local btn = Instance.new("TextButton", frame)
+		btn.Size = UDim2.new(0,160,0,44)
+		btn.Position = UDim2.new(0, ((idx-1)%2)*170 + 12, 0, math.floor((idx-1)/2)*52 + 72)
+		btn.Text = def.Display; btn.Font = Enum.Font.GothamSemibold; btn.TextSize = 16; btn.BackgroundTransparency = 0.14; btn.TextColor3 = Color3.fromRGB(240,240,240)
+		btn.MouseButton1Click:Connect(function()
+			local t = createdTools[def.Name] or player.Backpack:FindFirstChild(def.Name) or (player.Character and player.Character:FindFirstChild(def.Name))
+			if t then
+				local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+				if humanoid then pcall(function() humanoid:EquipTool(t) end) end
+				local be = t:FindFirstChild("SCP_ManualActivate")
+				if be and be:IsA("BindableEvent") then be:Fire() end
+			end
+		end)
+	end
+
+	local psychoBtn = Instance.new("TextButton", frame)
+	psychoBtn.Size = UDim2.new(0,496,0,40); psychoBtn.Position = UDim2.new(0,12,0,240); psychoBtn.Text = "Toggle Psycho Mode"
+	psychoBtn.Font = Enum.Font.GothamBold; psychoBtn.TextSize = 18; psychoBtn.BackgroundTransparency = 0.12; psychoBtn.TextColor3 = Color3.fromRGB(240,240,240)
+	psychoBtn.MouseButton1Click:Connect(function()
+		if not psychoActive then enablePsychoCore(); spawn(function() local cam = Workspace.CurrentCamera; if cam then local orig = cam.CFrame; for i=1,6 do cam.CFrame = orig * CFrame.new((math.random()-0.5)*0.5,(math.random()-0.5)*0.5,0); wait(0.03) end; pcall(function() cam.CFrame = orig end) end end)
+		else disablePsychoCore() end
+	end)
+end
+
+-- Rebuild on respawn
+local function rebuildEverything()
+	local bp = player:FindFirstChild("Backpack")
+	if bp then for _,t in pairs(bp:GetChildren()) do if t:IsA("Tool") and t.Name:match("^Psy_") then pcall(function() t:Destroy() end) end end end
+	ensureRemotes()
+	buildAllTools()
+	buildMainPanel()
+end
+
+player.CharacterAdded:Connect(function(char) wait(0.5) if RESPAWN_REBUILD then rebuildEverything() end end)
+rebuildEverything()
+hookAllTools()
+
+print("[SCP-096 CLIENT] Combined LocalScript loaded")
+-- === END CLIENT CODE ===
+]])()

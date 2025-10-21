@@ -1,0 +1,882 @@
+-- FE Herobrine client loadstring (kopieren & ausführen)
+local payload = [[
+-- FE Herobrine Client payload (GUI + client reactions)
+local rs = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local event = rs:WaitForChild("HerobrineEvent")
+
+local player = Players.LocalPlayer
+local guiRoot = player:WaitForChild("PlayerGui")
+
+-- ensure a top-level ScreenGui container
+local screenGui = guiRoot:FindFirstChild("FE_Herobrine_GUI")
+if not screenGui then
+    screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "FE_Herobrine_GUI"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = guiRoot
+end
+
+-- create or reuse panel
+local panel = screenGui:FindFirstChild("HerobrinePanel")
+if not panel then
+    panel = Instance.new("Frame", screenGui)
+    panel.Name = "HerobrinePanel"
+    panel.Size = UDim2.new(0, 250, 0, 340)
+    panel.Position = UDim2.new(0.05, 0, 0.25, 0)
+    panel.BackgroundColor3 = Color3.fromRGB(20,0,0)
+    panel.BackgroundTransparency = 0.15
+    panel.BorderSizePixel = 0
+    panel.Active = true
+    pcall(function() panel.Draggable = true end)
+end
+
+-- Title
+local title = panel:FindFirstChild("Title")
+if not title then
+    title = Instance.new("TextLabel", panel)
+    title.Name = "Title"
+    title.Size = UDim2.new(1,0,0,40)
+    title.Text = "HEROBRINE PANEL"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 20
+    title.TextColor3 = Color3.fromRGB(255,0,0)
+    title.BackgroundColor3 = Color3.fromRGB(40,0,0)
+    title.BorderSizePixel = 0
+end
+
+local buttons = {}
+local function mkbtn(name, text, y)
+    if panel:FindFirstChild(name) then
+        buttons[name] = panel:FindFirstChild(name)
+        return buttons[name]
+    end
+    local b = Instance.new("TextButton", panel)
+    b.Name = name
+    b.Size = UDim2.new(1,-20,0,40)
+    b.Position = UDim2.new(0,10,0,y)
+    b.Text = text
+    b.Font = Enum.Font.Gotham
+    b.TextSize = 18
+    b.TextColor3 = Color3.new(1,1,1)
+    b.BackgroundColor3 = Color3.fromRGB(50,0,0)
+    b.BorderSizePixel = 0
+    buttons[name] = b
+    return b
+end
+
+-- create buttons (matching server actions)
+local spawnBtn = mkbtn("SpawnHerobrine","SPAWN HEROBRINE",50)
+mkbtn("Fog","FOG",100)
+mkbtn("Lightning","LIGHTNING",150)
+mkbtn("JumpScare","JUMPSCARE",200)
+mkbtn("Sound","SOUND",250)
+mkbtn("Disappear","DISAPPEAR",300)
+
+-- helper: fire action to server
+local function fireAction(action)
+    if event and event.FireServer then
+        pcall(function() event:FireServer(action) end)
+    end
+end
+
+-- bind clicks
+spawnBtn.MouseButton1Click:Connect(function() fireAction("SpawnHerobrine") end)
+buttons.Fog.MouseButton1Click:Connect(function() fireAction("Fog") end)
+buttons.Lightning.MouseButton1Click:Connect(function() fireAction("Lightning") end)
+buttons.JumpScare.MouseButton1Click:Connect(function() fireAction("JumpScare") end)
+buttons.Sound.MouseButton1Click:Connect(function() fireAction("Sound") end)
+buttons.Disappear.MouseButton1Click:Connect(function() fireAction("Disappear") end)
+
+-- fullscreen flash / jumpscare helper
+local function playFlash(faceId, duration)
+    duration = duration or 1
+    local flashGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+    flashGui.Name = "HerobrineFlash"
+    local img = Instance.new("ImageLabel", flashGui)
+    img.Size = UDim2.new(1,0,1,0)
+    img.Position = UDim2.new(0,0,0,0)
+    img.BackgroundTransparency = 1
+    img.Image = faceId or ""
+    img.ImageTransparency = 1
+    img.ZIndex = 9999
+
+    local fadeIn = TweenService:Create(img, TweenInfo.new(0.15), {ImageTransparency = 0})
+    local fadeOut = TweenService:Create(img, TweenInfo.new(0.4), {ImageTransparency = 1})
+    fadeIn:Play()
+    fadeIn.Completed:Wait()
+    task.wait(duration)
+    fadeOut:Play()
+    fadeOut.Completed:Wait()
+    flashGui:Destroy()
+end
+
+-- handle server -> client notifications
+if event and event.OnClientEvent then
+    event.OnClientEvent:Connect(function(cmd, ...)
+        if cmd == "HerobrineSpawned" then
+            local exists = ...
+            if exists and spawnBtn then spawnBtn.Text = "RESPAWN HEROBRINE" end
+        elseif cmd == "HerobrineRemoved" then
+            if spawnBtn then spawnBtn.Text = "SPAWN HEROBRINE" end
+        elseif cmd == "PlayFlash" then
+            local duration, face = ...
+            playFlash(face, duration)
+        elseif cmd == "PlayJumpscare" then
+            local face = ...
+            playFlash(face, 1.0)
+        end
+    end)
+end
+
+-- convenience: expose a small API on the ScreenGui for debugging
+if not screenGui:FindFirstChild("FE_Info") then
+    local info = Instance.new("StringValue", screenGui)
+    info.Name = "FE_Info"
+    info.Value = "FE Herobrine GUI active"
+end
+--- LOCAL SCRIPT START ---
+-- LocalScript for FE Herobrine GUI (dark theme) - finalised
+-- Requires RemoteEvent named "HerobrineEvent" in ReplicatedStorage
+
+local rs = game:GetService("ReplicatedStorage")
+local event = rs:WaitForChild("HerobrineEvent")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+
+local gui = script.Parent
+gui.ResetOnSpawn = false
+
+-- main panel
+local panel = gui:FindFirstChild("HerobrinePanel")
+if not panel then
+	panel = Instance.new("Frame", gui)
+	panel.Name = "HerobrinePanel"
+	panel.Size = UDim2.new(0, 250, 0, 340)
+	panel.Position = UDim2.new(0.05, 0, 0.25, 0)
+	panel.BackgroundColor3 = Color3.fromRGB(20,0,0)
+	panel.BackgroundTransparency = 0.15
+	panel.BorderSizePixel = 0
+	panel.Active = true
+	panel.Draggable = true
+end
+
+local title = panel:FindFirstChild("Title")
+if not title then
+	title = Instance.new("TextLabel", panel)
+	title.Name = "Title"
+	title.Size = UDim2.new(1,0,0,40)
+	title.Text = "HEROBRINE PANEL"
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 20
+	title.TextColor3 = Color3.fromRGB(255,0,0)
+	title.BackgroundColor3 = Color3.fromRGB(40,0,0)
+	title.BorderSizePixel = 0
+end
+
+local buttons = {}
+local function mkbtn(name,text,y)
+	local existing = panel:FindFirstChild(name)
+	if existing then
+		buttons[name] = existing
+		return existing
+	end
+	local b = Instance.new("TextButton",panel)
+	b.Name = name
+	b.Size = UDim2.new(1,-20,0,40)
+	b.Position = UDim2.new(0,10,0,y)
+	b.Text = text
+	b.Font = Enum.Font.Gotham
+	b.TextSize = 18
+	b.TextColor3 = Color3.new(1,1,1)
+	b.BackgroundColor3 = Color3.fromRGB(50,0,0)
+	b.BorderSizePixel = 0
+	buttons[name] = b
+	return b
+end
+
+local spawnBtn = mkbtn("SpawnHerobrine","SPAWN HEROBRINE",50)
+mkbtn("Fog","FOG",100)
+mkbtn("Lightning","LIGHTNING",150)
+mkbtn("JumpScare","JUMPSCARE",200)
+mkbtn("Sound","SOUND",250)
+mkbtn("Disappear","DISAPPEAR",300)
+
+-- Button bindings
+spawnBtn.MouseButton1Click:Connect(function()
+	event:FireServer("SpawnHerobrine")
+end)
+
+buttons.Fog.MouseButton1Click:Connect(function()
+	event:FireServer("Fog")
+end)
+buttons.Lightning.MouseButton1Click:Connect(function()
+	event:FireServer("Lightning")
+end)
+buttons.JumpScare.MouseButton1Click:Connect(function()
+	event:FireServer("JumpScare")
+end)
+buttons.Sound.MouseButton1Click:Connect(function()
+	event:FireServer("Sound")
+end)
+buttons.Disappear.MouseButton1Click:Connect(function()
+	event:FireServer("Disappear")
+end)
+
+-- Client-side reactions from server
+local function playFlash(faceId, duration)
+	-- create fullscreen image
+	local flashGui = Instance.new("ScreenGui", Players.LocalPlayer:WaitForChild("PlayerGui"))
+	flashGui.Name = "HerobrineFlash"
+	local img = Instance.new("ImageLabel", flashGui)
+	img.Size = UDim2.new(1,0,1,0)
+	img.Position = UDim2.new(0,0,0,0)
+	img.BackgroundTransparency = 1
+	img.Image = faceId or ""
+	img.ImageTransparency = 1
+	img.ZIndex = 9999
+
+	-- fade in quickly, hold, then fade out
+	local fadeIn = TweenService:Create(img, TweenInfo.new(0.15), {ImageTransparency = 0})
+	local fadeOut = TweenService:Create(img, TweenInfo.new(0.4), {ImageTransparency = 1})
+	fadeIn:Play()
+	fadeIn.Completed:Wait()
+	task.wait(duration or 1)
+	fadeOut:Play()
+	fadeOut.Completed:Wait()
+	flashGui:Destroy()
+end
+
+-- update spawn button text when server notifies
+event.OnClientEvent:Connect(function(cmd, ...)
+	if cmd == "HerobrineSpawned" then
+		local exists = ...
+		if exists and spawnBtn then
+			spawnBtn.Text = "RESPAWN HEROBRINE"
+		end
+	elseif cmd == "HerobrineRemoved" then
+		if spawnBtn then spawnBtn.Text = "SPAWN HEROBRINE" end
+	elseif cmd == "PlayFlash" then
+		local duration, face = ...
+		playFlash(face, duration)
+	elseif cmd == "PlayJumpscare" then
+		local face = ...
+		playFlash(face, 1.0)
+	end
+end)
+
+--- LOCAL SCRIPT ENDE ---
+
+
+--- SERVER SCRIPT START ---
+-- ServerScript for FE Herobrine System (NEAREST follow, CLEAN_RESPAWN)
+-- Place this Script in ServerScriptService
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local event = ReplicatedStorage:WaitForChild("HerobrineEvent")
+local Lighting = game:GetService("Lighting")
+local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
+local RunService = game:GetService("RunService")
+
+-- Assets
+local BLOODY_FACE = "rbxassetid://7144199509"
+local FALLBACK_FACE = "rbxassetid://18231165369" -- white fallback
+local SCREAM_SOUND = "rbxassetid://9124476213" -- global sfx used for scream
+local GENERIC_SOUND = "rbxassetid://9124476213"
+
+_G.HEROBRINE = nil -- global container
+
+local function cleanHerobrine()
+	if _G.HEROBRINE then
+		-- stop run connection
+		if _G.HEROBRINE.RunConn then
+			_G.HEROBRINE.RunConn:Disconnect()
+			_G.HEROBRINE.RunConn = nil
+		end
+		-- stop sounds
+		if _G.HEROBRINE.Sounds then
+			for _,s in pairs(_G.HEROBRINE.Sounds) do
+				if s and s.Playing then s:Stop() end
+				s:Destroy()
+			end
+			_G.HEROBRINE.Sounds = nil
+		end
+		-- destroy model
+		if _G.HEROBRINE.Model then
+			_G.HEROBRINE.Model:Destroy()
+		end
+		_G.HEROBRINE = nil
+		-- notify clients
+		event:FireAllClients("HerobrineRemoved", false)
+	end
+end
+
+local function createHerobrineModel()
+	local model = Instance.new("Model")
+	model.Name = "Herobrine"
+	
+	local humanoid = Instance.new("Humanoid")
+	humanoid.Parent = model
+	humanoid.Name = "Humanoid"
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid.AutoRotate = false
+	humanoid.WalkSpeed = 0
+
+	local root = Instance.new("Part")
+	root.Name = "HumanoidRootPart"
+	root.Size = Vector3.new(2,2,1)
+	root.Anchored = true
+	root.CanCollide = false
+	root.Transparency = 1
+	root.Parent = model
+
+	-- Head
+	local head = Instance.new("Part")
+	head.Name = "Head"
+	head.Size = Vector3.new(2,2,1)
+	head.Anchored = true
+	head.CanCollide = false
+	head.Parent = model
+
+	-- Body (visual)
+	local torso = Instance.new("Part")
+	torso.Name = "Torso"
+	torso.Size = Vector3.new(2,3,1)
+	torso.Anchored = true
+	torso.CanCollide = false
+	torso.Color = Color3.fromRGB(10,10,10)
+	torso.Parent = model
+
+	-- apply face decal with fallback check (best-effort)
+	local success = pcall(function()
+		local decal = Instance.new("Decal", head)
+		decal.Name = "Face"
+		decal.Texture = BLOODY_FACE
+	end)
+	if not success then
+		local decal = Instance.new("Decal", head)
+		decal.Name = "Face"
+		decal.Texture = FALLBACK_FACE
+	end
+
+	-- position helper
+	_G.HEROBRINE = {Model = model, Hum = humanoid, Root = root, Sounds = {}, RunConn = nil}
+	model.Parent = workspace
+	return _G.HEROBRINE
+end
+
+local function playGlobalSound(assetId, volume, loop)
+	local s = Instance.new("Sound")
+	s.SoundId = assetId
+	s.Looped = loop or false
+	s.Volume = volume or 1
+	s.Parent = SoundService
+	s:Play()
+	-- track
+	if _G.HEROBRINE then
+		_G.HEROBRINE.Sounds = _G.HEROBRINE.Sounds or {}
+		table.insert(_G.HEROBRINE.Sounds, s)
+	end
+	return s
+end
+
+-- Start Follow logic (NEAREST, adaptive 100/12/5, smooth, endless)
+local function startFollow()
+	local h = _G.HEROBRINE
+	if not h then return end
+	-- unanchor root so physics can move it
+	h.Root.Anchored = false
+	if h.RunConn then h.RunConn:Disconnect() end
+	h.RunConn = RunService.Heartbeat:Connect(function()
+		if not _G.HEROBRINE then return end
+		local nearestDist = math.huge
+		local targetRoot = nil
+		for _,pl in ipairs(Players:GetPlayers()) do
+			local c = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+			if c then
+				local d = (c.Position - h.Root.Position).Magnitude
+				if d < nearestDist then nearestDist = d; targetRoot = c end
+			end
+		end
+		if targetRoot then
+			-- adaptive speed
+			local speed = (nearestDist > 100) and 12 or 5
+			h.Hum.WalkSpeed = speed
+			-- smooth move: set Humanoid to moveTo
+			h.Hum:MoveTo(targetRoot.Position)
+		end
+	end)
+end
+
+-- Handler for remote events from clients
+event.OnServerEvent:Connect(function(player, action)
+	if action == "SpawnHerobrine" then
+		-- CLEAN_RESPAWN
+		cleanHerobrine()
+		local info = createHerobrineModel()
+		if not info then return end
+		-- place model roughly behind each player: choose average position behind all players
+		local sum = Vector3.new(0,0,0)
+		local count = 0
+		for _,pl in ipairs(Players:GetPlayers()) do
+			local c = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+			if c then
+				local back = c.CFrame * CFrame.new(0,0,-math.random(3,8))
+				sum = sum + back.Position
+				count = count + 1
+			end
+		end
+		local spawnPos = Vector3.new(0,5,0)
+		if count > 0 then spawnPos = sum / count end
+		-- place root at spawnPos
+		info.Root.CFrame = CFrame.new(spawnPos + Vector3.new(0,3,0))
+		-- link parts to humanoid via Motor6D for walking
+		-- simple approach: create a primary part for model
+		info.Model.PrimaryPart = info.Root
+		-- notify clients that herobrine exists
+		event:FireAllClients("HerobrineSpawned", true)
+		-- 3s freeze
+		task.delay(3, function()
+			-- scream on sight (global)
+			if SCREAM_SOUND then
+				playGlobalSound(SCREAM_SOUND, 1, false)
+			end
+			-- start follow loop
+			startFollow()
+		end)
+	elseif action == "Disappear" then
+		-- VANISH_KILL: kill humanoid
+		if _G.HEROBRINE and _G.HEROBRINE.Hum then
+			_G.HEROBRINE.Hum:TakeDamage(9999)
+			cleanHerobrine()
+		end
+	elseif action == "Fog" then
+		Lighting.FogEnd = 50
+		Lighting.FogColor = Color3.fromRGB(80, 0, 0)
+		-- optional: reset after some time
+		task.delay(30, function()
+			Lighting.FogEnd = 100000
+		end)
+	elseif action == "Lightning" then
+		-- spawn a neon flash near a random player
+		local targets = Players:GetPlayers()
+		if #targets > 0 then
+			local pl = targets[math.random(1,#targets)]
+			local root = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+			if root then
+				local part = Instance.new("Part", workspace)
+				part.Size = Vector3.new(1,20,1)
+				part.Anchored = true
+				part.CanCollide = false
+				part.CFrame = root.CFrame * CFrame.new(0,20,0)
+				part.Material = Enum.Material.Neon
+				part.Color = Color3.fromRGB(255,255,200)
+				game:GetService("Debris"):AddItem(part, 0.25)
+			end
+		end
+	elseif action == "JumpScare" then
+		-- instruct all clients to do fullscreen flash using face (prefer bloody)
+		event:FireAllClients("PlayJumpscare", BLOODY_FACE or FALLBACK_FACE)
+	elseif action == "Sound" then
+		-- play a global creepy sound
+		playGlobalSound(GENERIC_SOUND, 1.2, false)
+	end
+end)
+
+--- SERVER SCRIPT ENDE ---
+
+--- LOADSTRING PAYLOAD START ---
+-- Complete client-side loadstring payload (copyable). Place this block into a file or copy out for use.
+local payload = [[
+-- FE Herobrine Client payload (GUI + client reactions)
+local rs = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local event = rs:WaitForChild("HerobrineEvent")
+
+local player = Players.LocalPlayer
+local guiRoot = player:WaitForChild("PlayerGui")
+
+-- ensure a top-level ScreenGui container
+local screenGui = guiRoot:FindFirstChild("FE_Herobrine_GUI")
+if not screenGui then
+    screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "FE_Herobrine_GUI"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = guiRoot
+end
+
+-- create or reuse panel
+local panel = screenGui:FindFirstChild("HerobrinePanel")
+if not panel then
+    panel = Instance.new("Frame", screenGui)
+    panel.Name = "HerobrinePanel"
+    panel.Size = UDim2.new(0, 250, 0, 340)
+    panel.Position = UDim2.new(0.05, 0, 0.25, 0)
+    panel.BackgroundColor3 = Color3.fromRGB(20,0,0)
+    panel.BackgroundTransparency = 0.15
+    panel.BorderSizePixel = 0
+    panel.Active = true
+    pcall(function() panel.Draggable = true end)
+end
+
+-- Title
+local title = panel:FindFirstChild("Title")
+if not title then
+    title = Instance.new("TextLabel", panel)
+    title.Name = "Title"
+    title.Size = UDim2.new(1,0,0,40)
+    title.Text = "HEROBRINE PANEL"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 20
+    title.TextColor3 = Color3.fromRGB(255,0,0)
+    title.BackgroundColor3 = Color3.fromRGB(40,0,0)
+    title.BorderSizePixel = 0
+end
+
+local buttons = {}
+local function mkbtn(name, text, y)
+    if panel:FindFirstChild(name) then
+        buttons[name] = panel:FindFirstChild(name)
+        return buttons[name]
+    end
+    local b = Instance.new("TextButton", panel)
+    b.Name = name
+    b.Size = UDim2.new(1,-20,0,40)
+    b.Position = UDim2.new(0,10,0,y)
+    b.Text = text
+    b.Font = Enum.Font.Gotham
+    b.TextSize = 18
+    b.TextColor3 = Color3.new(1,1,1)
+    b.BackgroundColor3 = Color3.fromRGB(50,0,0)
+    b.BorderSizePixel = 0
+    buttons[name] = b
+    return b
+end
+
+-- create buttons (matching server actions)
+local spawnBtn = mkbtn("SpawnHerobrine","SPAWN HEROBRINE",50)
+mkbtn("Fog","FOG",100)
+mkbtn("Lightning","LIGHTNING",150)
+mkbtn("JumpScare","JUMPSCARE",200)
+mkbtn("Sound","SOUND",250)
+mkbtn("Disappear","DISAPPEAR",300)
+
+-- helper: fire action to server
+local function fireAction(action)
+    if event and event.FireServer then
+        pcall(function() event:FireServer(action) end)
+    end
+end
+
+-- bind clicks
+spawnBtn.MouseButton1Click:Connect(function() fireAction("SpawnHerobrine") end)
+buttons.Fog.MouseButton1Click:Connect(function() fireAction("Fog") end)
+buttons.Lightning.MouseButton1Click:Connect(function() fireAction("Lightning") end)
+buttons.JumpScare.MouseButton1Click:Connect(function() fireAction("JumpScare") end)
+buttons.Sound.MouseButton1Click:Connect(function() fireAction("Sound") end)
+buttons.Disappear.MouseButton1Click:Connect(function() fireAction("Disappear") end)
+
+-- fullscreen flash / jumpscare helper
+local function playFlash(faceId, duration)
+    duration = duration or 1
+    local flashGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+    flashGui.Name = "HerobrineFlash"
+    local img = Instance.new("ImageLabel", flashGui)
+    img.Size = UDim2.new(1,0,1,0)
+    img.Position = UDim2.new(0,0,0,0)
+    img.BackgroundTransparency = 1
+    img.Image = faceId or ""
+    img.ImageTransparency = 1
+    img.ZIndex = 9999
+
+    local fadeIn = TweenService:Create(img, TweenInfo.new(0.15), {ImageTransparency = 0})
+    local fadeOut = TweenService:Create(img, TweenInfo.new(0.4), {ImageTransparency = 1})
+    fadeIn:Play()
+    fadeIn.Completed:Wait()
+    task.wait(duration)
+    fadeOut:Play()
+    fadeOut.Completed:Wait()
+    flashGui:Destroy()
+end
+
+-- handle server -> client notifications
+if event and event.OnClientEvent then
+    event.OnClientEvent:Connect(function(cmd, ...)
+        if cmd == "HerobrineSpawned" then
+            local exists = ...
+            if exists and spawnBtn then spawnBtn.Text = "RESPAWN HEROBRINE" end
+        elseif cmd == "HerobrineRemoved" then
+            if spawnBtn then spawnBtn.Text = "SPAWN HEROBRINE" end
+        elseif cmd == "PlayFlash" then
+            local duration, face = ...
+            playFlash(face, duration)
+        elseif cmd == "PlayJumpscare" then
+            local face = ...
+            playFlash(face, 1.0)
+        end
+    end)
+end
+
+-- convenience: expose a small API on the ScreenGui for debugging
+if not screenGui:FindFirstChild("FE_Info") then
+    local info = Instance.new("StringValue", screenGui)
+    info.Name = "FE_Info"
+    info.Value = "FE Herobrine GUI active"
+end
+]]
+
+-- safe-run: try to run payload
+local ok, err = pcall(function()
+    local f = loadstring(payload)
+    if type(f) == "function" then
+        f()
+    else
+        error("loadstring did not return a function")
+    end
+end)
+
+if not ok then
+    warn("FE Herobrine loadstring failed:", err)
+else
+    print("FE Herobrine client payload executed.")
+end
+
+--- LOADSTRING PAYLOAD ENDE ---
+
+--- SERVER SCRIPT EXPORT START ---
+-- COPY THIS WHOLE BLOCK into ServerScriptService as a Script named "HerobrineServer"
+-- ServerScript (exported)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local event = ReplicatedStorage:WaitForChild("HerobrineEvent")
+local Lighting = game:GetService("Lighting")
+local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
+local RunService = game:GetService("RunService")
+
+-- Assets
+local BLOODY_FACE = "rbxassetid://7144199509"
+local FALLBACK_FACE = "rbxassetid://18231165369" -- white fallback
+local SCREAM_SOUND = "rbxassetid://9124476213" -- global sfx used for scream
+local GENERIC_SOUND = "rbxassetid://9124476213"
+
+_G.HEROBRINE = nil -- global container
+
+local function cleanHerobrine()
+	if _G.HEROBRINE then
+		-- stop run connection
+		if _G.HEROBRINE.RunConn then
+			_G.HEROBRINE.RunConn:Disconnect()
+			_G.HEROBRINE.RunConn = nil
+		end
+		-- stop sounds
+		if _G.HEROBRINE.Sounds then
+			for _,s in pairs(_G.HEROBRINE.Sounds) do
+				if s and s.Playing then s:Stop() end
+				s:Destroy()
+			end
+			_G.HEROBRINE.Sounds = nil
+		end
+		-- destroy model
+		if _G.HEROBRINE.Model then
+			_G.HEROBRINE.Model:Destroy()
+		end
+		_G.HEROBRINE = nil
+		-- notify clients
+		event:FireAllClients("HerobrineRemoved", false)
+	end
+end
+
+local function createHerobrineModel()
+	local model = Instance.new("Model")
+	model.Name = "Herobrine"
+	
+	local humanoid = Instance.new("Humanoid")
+	humanoid.Parent = model
+	humanoid.Name = "Humanoid"
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid.AutoRotate = false
+	humanoid.WalkSpeed = 0
+
+	local root = Instance.new("Part")
+	root.Name = "HumanoidRootPart"
+	root.Size = Vector3.new(2,2,1)
+	root.Anchored = true
+	root.CanCollide = false
+	root.Transparency = 1
+	root.Parent = model
+
+	-- Head
+	local head = Instance.new("Part")
+	head.Name = "Head"
+	head.Size = Vector3.new(2,2,1)
+	head.Anchored = true
+	head.CanCollide = false
+	head.Parent = model
+
+	-- Body (visual)
+	local torso = Instance.new("Part")
+	torso.Name = "Torso"
+	torso.Size = Vector3.new(2,3,1)
+	torso.Anchored = true
+	torso.CanCollide = false
+	torso.Color = Color3.fromRGB(10,10,10)
+	torso.Parent = model
+
+	-- apply face decal with fallback check (best-effort)
+	local success = pcall(function()
+		local decal = Instance.new("Decal", head)
+		decal.Name = "Face"
+		decal.Texture = BLOODY_FACE
+	end)
+	if not success then
+		local decal = Instance.new("Decal", head)
+		decal.Name = "Face"
+		decal.Texture = FALLBACK_FACE
+	end
+
+	-- position helper
+	_G.HEROBRINE = {Model = model, Hum = humanoid, Root = root, Sounds = {}, RunConn = nil}
+	model.Parent = workspace
+	return _G.HEROBRINE
+end
+
+local function playGlobalSound(assetId, volume, loop)
+	local s = Instance.new("Sound")
+	s.SoundId = assetId
+	s.Looped = loop or false
+	s.Volume = volume or 1
+	s.Parent = SoundService
+	s:Play()
+	-- track
+	if _G.HEROBRINE then
+		_G.HEROBRINE.Sounds = _G.HEROBRINE.Sounds or {}
+		table.insert(_G.HEROBRINE.Sounds, s)
+	end
+	return s
+end
+
+-- Start Follow logic (NEAREST, adaptive 100/12/5, smooth, endless)
+local function startFollow()
+	local h = _G.HEROBRINE
+	if not h then return end
+	-- unanchor root so physics can move it
+	h.Root.Anchored = false
+	if h.RunConn then h.RunConn:Disconnect() end
+	h.RunConn = RunService.Heartbeat:Connect(function()
+		if not _G.HEROBRINE then return end
+		local nearestDist = math.huge
+		local targetRoot = nil
+		for _,pl in ipairs(Players:GetPlayers()) do
+			local c = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+			if c then
+				local d = (c.Position - h.Root.Position).Magnitude
+				if d < nearestDist then nearestDist = d; targetRoot = c end
+			end
+		end
+		if targetRoot then
+			-- adaptive speed
+			local speed = (nearestDist > 100) and 12 or 5
+			h.Hum.WalkSpeed = speed
+			-- smooth move: set Humanoid to moveTo
+			h.Hum:MoveTo(targetRoot.Position)
+		end
+	end)
+end
+
+-- Handler for remote events from clients
+event.OnServerEvent:Connect(function(player, action)
+	if action == "SpawnHerobrine" then
+		-- CLEAN_RESPAWN
+		cleanHerobrine()
+		local info = createHerobrineModel()
+		if not info then return end
+		-- place model roughly behind each player: choose average position behind all players
+		local sum = Vector3.new(0,0,0)
+		local count = 0
+		for _,pl in ipairs(Players:GetPlayers()) do
+			local c = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+			if c then
+				local back = c.CFrame * CFrame.new(0,0,-math.random(3,8))
+				sum = sum + back.Position
+				count = count + 1
+			end
+		end
+		local spawnPos = Vector3.new(0,5,0)
+		if count > 0 then spawnPos = sum / count end
+		-- place root at spawnPos
+		info.Root.CFrame = CFrame.new(spawnPos + Vector3.new(0,3,0))
+		-- link parts to humanoid via Motor6D for walking
+		-- simple approach: create a primary part for model
+		info.Model.PrimaryPart = info.Root
+		-- notify clients that herobrine exists
+		event:FireAllClients("HerobrineSpawned", true)
+		-- 3s freeze
+		task.delay(3, function()
+			-- scream on sight (global)
+			if SCREAM_SOUND then
+				playGlobalSound(SCREAM_SOUND, 1, false)
+			end
+			-- start follow loop
+			startFollow()
+		end)
+	elseif action == "Disappear" then
+		-- VANISH_KILL: kill humanoid
+		if _G.HEROBRINE and _G.HEROBRINE.Hum then
+			_G.HEROBRINE.Hum:TakeDamage(9999)
+			cleanHerobrine()
+		end
+	elseif action == "Fog" then
+		Lighting.FogEnd = 50
+		Lighting.FogColor = Color3.fromRGB(80, 0, 0)
+		-- optional: reset after some time
+		task.delay(30, function()
+			Lighting.FogEnd = 100000
+		end)
+	elseif action == "Lightning" then
+		-- spawn a neon flash near a random player
+		local targets = Players:GetPlayers()
+		if #targets > 0 then
+			local pl = targets[math.random(1,#targets)]
+			local root = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+			if root then
+				local part = Instance.new("Part", workspace)
+				part.Size = Vector3.new(1,20,1)
+				part.Anchored = true
+				part.CanCollide = false
+				part.CFrame = root.CFrame * CFrame.new(0,20,0)
+				part.Material = Enum.Material.Neon
+				part.Color = Color3.fromRGB(255,255,200)
+				game:GetService("Debris"):AddItem(part, 0.25)
+			end
+		end
+	elseif action == "JumpScare" then
+		-- instruct all clients to do fullscreen flash using face (prefer bloody)
+		event:FireAllClients("PlayJumpscare", BLOODY_FACE or FALLBACK_FACE)
+	elseif action == "Sound" then
+		-- play a global creepy sound
+		playGlobalSound(GENERIC_SOUND, 1.2, false)
+	end
+end)
+
+--- SERVER SCRIPT EXPORT ENDE ---
+
+]]
+
+-- safe-run: try to run payload
+local ok, err = pcall(function()
+    local f = loadstring(payload)
+    if type(f) == "function" then
+        f()
+    else
+        error("loadstring did not return a function")
+    end
+end)
+
+if not ok then
+    warn("FE Herobrine loadstring failed:", err)
+else
+    print("FE Herobrine client payload executed.")
+end

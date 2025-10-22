@@ -1,0 +1,584 @@
+-- Installer: CreateMorphSystemInstaller.lua
+-- Place this Script into ServerScriptService in Studio and run it once.
+-- It will create:
+--  - ReplicatedStorage RemoteEvents (MorphRemote, AttackRemote)
+--  - A server Script "MorphToolsCreator" (generates Tools in StarterPack with LocalScripts)
+--  - A server Script "AttackSystem" (projectile + AOE attack handler)
+--  - A LocalScript "PsychoMorphGUI" under StarterGui (the tab GUI)
+-- After running, delete this installer if you want.
+
+local ServerScriptService = game:GetService("ServerScriptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterPack = game:GetService("StarterPack")
+local StarterGui = game:GetService("StarterGui")
+local Players = game:GetService("Players")
+
+-- Ensure folders / remotes
+local function ensureRemote(name)
+	local r = ReplicatedStorage:FindFirstChild(name)
+	if not r then
+		r = Instance.new("RemoteEvent")
+		r.Name = name
+		r.Parent = ReplicatedStorage
+	end
+	return r
+end
+
+ensureRemote("MorphRemote")
+ensureRemote("AttackRemote")
+
+-- Helper to create a Script (Server) or LocalScript (client) with source (only valid in Studio)
+local function createScript(parent, className, name, source)
+	-- remove existing
+	local existing = parent:FindFirstChild(name)
+	if existing then existing:Destroy() end
+
+	local inst = Instance.new(className)
+	inst.Name = name
+	-- Setting Source works in Studio environment
+	inst.Source = source
+	inst.Parent = parent
+	return inst
+end
+
+-- 1) Morph Tools creator (server-side) - creates Tools in StarterPack and LocalScript inside each Tool
+local morphToolsSource = [[
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterPack = game:GetService("StarterPack")
+local Players = game:GetService("Players")
+local Debris = game:GetService("Debris")
+
+local MORPHS = {
+	"psycho","zombie","jeffthekiller","ghost","sonic.exe","herobrine",
+	"scp 096",
+	"devildemon","venom","MTI trollge",
+	"garou","saitama terra3 inf","hulk",
+	"God",
+	"robot emperor",
+}
+
+-- Animation placeholders (replace ids as needed)
+local ANIMATIONS = { attack = 0, special = 0 }
+
+-- Ensure Accessories folder
+local accessoriesFolder = ReplicatedStorage:FindFirstChild("Accessories")
+if not accessoriesFolder then
+	accessoriesFolder = Instance.new("Folder")
+	accessoriesFolder.Name = "Accessories"
+	accessoriesFolder.Parent = ReplicatedStorage
+end
+
+-- Ensure MorphRemote and AttackRemote exist (compatibility)
+local remote = ReplicatedStorage:FindFirstChild("MorphRemote")
+if not remote then
+	remote = Instance.new("RemoteEvent")
+	remote.Name = "MorphRemote"
+	remote.Parent = ReplicatedStorage
+end
+
+local attackRemote = ReplicatedStorage:FindFirstChild("AttackRemote")
+if not attackRemote then
+	attackRemote = Instance.new("RemoteEvent")
+	attackRemote.Name = "AttackRemote"
+	attackRemote.Parent = ReplicatedStorage
+end
+
+-- Create Tools in StarterPack
+for _,mname in ipairs(MORPHS) do
+	if not StarterPack:FindFirstChild(mname) then
+		local tool = Instance.new("Tool")
+		tool.Name = mname
+		tool.RequiresHandle = true
+		tool.CanBeDropped = false
+
+		local handle = Instance.new("Part")
+		handle.Name = "Handle"
+		handle.Size = Vector3.new(1,1,1)
+		handle.Transparency = 1
+		handle.Parent = tool
+
+		-- LocalScript that runs on client for each Tool (equip/attack UI + fire remote)
+		local ls = Instance.new("LocalScript")
+		ls.Name = "MorphClient"
+		ls.Source = [[
+local tool = script.Parent
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+local remote = ReplicatedStorage:WaitForChild("MorphRemote")
+local attackRemote = ReplicatedStorage:WaitForChild("AttackRemote")
+local UIS = game:GetService("UserInputService")
+local cooldown = false
+local morphName = tool.Name
+
+local ANIMS = { attack = ]] .. tostring(ANIMATIONS.attack) .. [[, special = ]] .. tostring(ANIMATIONS.special) .. [[ }
+
+local function playAnim(animId)
+	if animId == 0 then return end
+	local char = player.Character
+	if not char then return end
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+	local a = Instance.new("Animation")
+	a.AnimationId = "rbxassetid://" .. tostring(animId)
+	local track = humanoid:LoadAnimation(a)
+	track:Play()
+	task.delay(6, function() pcall(function() track:Stop() end) end)
+end
+
+tool.Equipped:Connect(function()
+	-- request server to equip accessories
+	remote:FireServer("Equip", morphName)
+end)
+
+tool.Activated:Connect(function()
+	if cooldown then return end
+	cooldown = true
+	playAnim(ANIMS.attack)
+	-- fire attack remote (AttackSystem listens to AttackRemote)
+	attackRemote:FireServer(morphName)
+	task.delay(0.3, function() cooldown = false end)
+end)
+
+UIS.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if tool.Parent ~= player.Character then return end
+	if input.KeyCode == Enum.KeyCode.Q then
+		playAnim(ANIMS.special)
+		attackRemote:FireServer(morphName)
+	end
+end)
+]]
+		ls.Parent = tool
+
+		tool.Parent = StarterPack
+	end
+end
+
+print("Morph Tools created in StarterPack (with client LocalScripts).")
+]]
+
+-- 2) AttackSystem source (server-side)
+local attackSystemSource = [[
+-- ServerScriptService/AttackSystem.lua (generated by installer)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Debris = game:GetService("Debris")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local ATTACK_REMOTE_NAME = "AttackRemote"
+local attackRemote = ReplicatedStorage:FindFirstChild(ATTACK_REMOTE_NAME)
+if not attackRemote then
+	attackRemote = Instance.new("RemoteEvent")
+	attackRemote.Name = ATTACK_REMOTE_NAME
+	attackRemote.Parent = ReplicatedStorage
+end
+
+local morphRemote = ReplicatedStorage:FindFirstChild("MorphRemote")
+
+local projFolder = Workspace:FindFirstChild("MorphProjectiles")
+if not projFolder then
+	projFolder = Instance.new("Folder")
+	projFolder.Name = "MorphProjectiles"
+	projFolder.Parent = Workspace
+end
+
+local DEFAULT_STATS = {
+	range = 120, speed = 200, impactRadius = 6, playerAOERadius = 8,
+	impactDamage = 6, playerDamage = 40, cooldown = 1.0, lifetime = 6,
+}
+
+local MORPH_STATS = {
+	["psycho"] = {
+		range = 120, speed = 220, impactRadius = 5, playerAOERadius = 9,
+		impactDamage = 8, playerDamage = 55, cooldown = 1.0, lifetime = 5,
+	},
+}
+
+local function getStats(morphName)
+	return MORPH_STATS[morphName] or DEFAULT_STATS
+end
+
+local playerCooldowns = {}
+
+local function canUse(player, morphName)
+	local uid = player.UserId
+	playerCooldowns[uid] = playerCooldowns[uid] or {}
+	local last = playerCooldowns[uid][morphName] or 0
+	local now = tick()
+	local cd = getStats(morphName).cooldown or DEFAULT_STATS.cooldown
+	if now - last < cd then
+		return false, cd - (now - last)
+	end
+	playerCooldowns[uid][morphName] = now
+	return true, 0
+end
+
+local function validatePlayerHasTool(player, morphName)
+	if not player.Character then return false end
+	for _, obj in ipairs(player.Character:GetChildren()) do
+		if obj:IsA("Tool") and obj.Name == morphName then
+			return true
+		end
+	end
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if backpack and backpack:FindFirstChild(morphName) then
+		return true
+	end
+	return false
+end
+
+local function applyDamageToHumanoid(humanoid, damage, sourcePlayer)
+	if not humanoid or humanoid.Health <= 0 then return end
+	local parentModel = humanoid.Parent
+	if parentModel and parentModel == sourcePlayer.Character then return end
+	pcall(function()
+		humanoid:TakeDamage(damage)
+	end)
+end
+
+local function playImpactEffects(position)
+	local s = Instance.new("Sound")
+	s.Name = "ImpactSound"
+	s.SoundId = ""
+	s.Volume = 1
+	s.PlayOnRemove = false
+	s.Parent = Workspace
+	if s.SoundId ~= "" then
+		s:Play()
+		Debris:AddItem(s, 4)
+	else
+		s:Destroy()
+	end
+
+	local part = Instance.new("Part")
+	part.Name = "ImpactVFX"
+	part.Size = Vector3.new(1,1,1)
+	part.Anchored = true
+	part.CanCollide = false
+	part.Transparency = 1
+	part.Position = position
+	part.Parent = projFolder
+
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Speed = NumberRange.new(6,12)
+	emitter.Rate = 200
+	emitter.Lifetime = NumberRange.new(0.2, 0.6)
+	emitter.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,1), NumberSequenceKeypoint.new(1,0)})
+	emitter.Parent = part
+
+	Debris:AddItem(part, 1.2)
+end
+
+local function spawnProjectile(originCFrame, direction, stats, ownerPlayer, morphName)
+	local proj = Instance.new("Part")
+	proj.Name = ("Proj_%s_%d"):format(morphName:gsub("%s+","_"), tick() % 10000)
+	proj.Shape = Enum.PartType.Ball
+	proj.Material = Enum.Material.Neon
+	proj.Size = Vector3.new(1.6, 1.6, 1.6)
+	proj.CFrame = originCFrame
+	proj.CanCollide = false
+	proj.Anchored = false
+	proj.Massless = true
+	proj.Parent = projFolder
+
+	local trail = Instance.new("ParticleEmitter")
+	trail.Rate = 80
+	trail.Lifetime = NumberRange.new(0.2)
+	trail.Speed = NumberRange.new(0)
+	trail.Size = NumberSequence.new(0.8)
+	trail.Parent = proj
+
+	local bv = Instance.new("BodyVelocity")
+	bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+	bv.Velocity = direction.Unit * stats.speed
+	bv.P = 1e4
+	bv.Parent = proj
+
+	Debris:AddItem(proj, stats.lifetime or DEFAULT_STATS.lifetime)
+
+	return proj
+end
+
+local function raycastFromTo(fromPos, toPos, ignoreList)
+	local rp = RaycastParams.new()
+	rp.FilterType = Enum.RaycastFilterType.Blacklist
+	rp.FilterDescendantsInstances = ignoreList or {}
+	rp.IgnoreWater = true
+	return Workspace:Raycast(fromPos, toPos - fromPos, rp)
+end
+
+local function handleAttack(player, morphName)
+	if not player or not player.Character then return end
+	if not validatePlayerHasTool(player, morphName) then return end
+
+	local ok, remaining = canUse(player, morphName)
+	if not ok then return end
+
+	local stats = getStats(morphName)
+	local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	local origin = hrp.Position + (hrp.CFrame.LookVector * 2) + Vector3.new(0,1.5,0)
+	local dir = hrp.CFrame.LookVector
+
+	local proj = spawnProjectile(CFrame.new(origin), dir, stats, player, morphName)
+
+	local traveled = 0
+	local maxRange = stats.range or DEFAULT_STATS.range
+	local lastPos = proj.Position
+	local hitDetected = false
+	local stepDt = 1/60
+
+	local conn
+	conn = RunService.Heartbeat:Connect(function(dt)
+		if not proj or not proj.Parent then
+			if conn then conn:Disconnect() end
+			return
+		end
+
+		local moveDelta = dir.Unit * (stats.speed * dt)
+		local newPos = proj.Position + moveDelta
+
+		local result = raycastFromTo(lastPos, newPos, {player.Character, proj})
+		if result then
+			hitDetected = true
+			local hitPos = result.Position
+			playImpactEffects(hitPos)
+
+			local impactRadius = stats.impactRadius or DEFAULT_STATS.impactRadius
+			local impactDamage = stats.impactDamage or DEFAULT_STATS.impactDamage
+			for _, part in ipairs(Workspace:GetPartBoundsInRadius(hitPos, impactRadius)) do
+				local model = part:FindFirstAncestorOfClass("Model")
+				if model then
+					local hum = model:FindFirstChildOfClass("Humanoid")
+					if hum then
+						applyDamageToHumanoid(hum, impactDamage, player)
+					end
+				end
+			end
+
+			local playerRadius = stats.playerAOERadius or DEFAULT_STATS.playerAOERadius
+			local playerDamage = stats.playerDamage or DEFAULT_STATS.playerDamage
+			for _, part in ipairs(Workspace:GetPartBoundsInRadius(hrp.Position, playerRadius)) do
+				local model = part:FindFirstAncestorOfClass("Model")
+				if model then
+					local hum = model:FindFirstChildOfClass("Humanoid")
+					if hum then
+						applyDamageToHumanoid(hum, playerDamage, player)
+					end
+				end
+			end
+
+			proj:Destroy()
+			if conn then conn:Disconnect() end
+			return
+		end
+
+		if proj and proj.Parent then
+			proj.CFrame = CFrame.new(newPos)
+			traveled = traveled + (newPos - lastPos).Magnitude
+			lastPos = newPos
+			if traveled >= maxRange then
+				playImpactEffects(proj.Position)
+				local impactRadius = stats.impactRadius or DEFAULT_STATS.impactRadius
+				local impactDamage = stats.impactDamage or DEFAULT_STATS.impactDamage
+				for _, part in ipairs(Workspace:GetPartBoundsInRadius(proj.Position, impactRadius)) do
+					local model = part:FindFirstAncestorOfClass("Model")
+					if model then
+						local hum = model:FindFirstChildOfClass("Humanoid")
+						if hum then
+							applyDamageToHumanoid(hum, impactDamage, player)
+						end
+					end
+				end
+
+				local playerRadius = stats.playerAOERadius or DEFAULT_STATS.playerAOERadius
+				local playerDamage = stats.playerDamage or DEFAULT_STATS.playerDamage
+				for _, part in ipairs(Workspace:GetPartBoundsInRadius(hrp.Position, playerRadius)) do
+					local model = part:FindFirstAncestorOfClass("Model")
+					if model then
+						local hum = model:FindFirstChildOfClass("Humanoid")
+						if hum then
+							applyDamageToHumanoid(hum, playerDamage, player)
+						end
+					end
+				end
+
+				proj:Destroy()
+				if conn then conn:Disconnect() end
+				return
+			end
+		else
+			if conn then conn:Disconnect() end
+		end
+	end)
+end
+
+local function onRemoteAttack(player, morphName)
+	if type(morphName) ~= "string" then return end
+	handleAttack(player, morphName)
+end
+
+attackRemote.OnServerEvent:Connect(onRemoteAttack)
+
+if morphRemote and morphRemote:IsA("RemoteEvent") then
+	morphRemote.OnServerEvent:Connect(function(player, action, morphName)
+		if action == "Attack" and type(morphName) == "string" then
+			onRemoteAttack(player, morphName)
+		end
+	end)
+end
+
+print("[AttackSystem] Loaded. Projectile type = P-BALL. Cooldown default = " .. tostring(DEFAULT_STATS.cooldown))
+]]
+
+-- 3) GUI LocalScript (placed into StarterGui) - dark Tabs GUI (from earlier)
+local guiLocalSource = [[
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "PsychoMorphGUI"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local tabBar = Instance.new("Frame")
+tabBar.Name = "TabBar"
+tabBar.Parent = gui
+tabBar.Size = UDim2.new(1,0,0,40)
+tabBar.Position = UDim2.new(0,0,0,0)
+tabBar.BackgroundColor3 = Color3.fromRGB(25,25,25)
+tabBar.BorderSizePixel = 0
+
+local pagesFolder = Instance.new("Folder")
+pagesFolder.Name = "Pages"
+pagesFolder.Parent = gui
+
+local PAGES = {
+    ["Horror / Creepypasta"] = {"psycho","zombie","jeffthekiller","ghost","sonic.exe","herobrine"},
+    ["SCP"] = {"scp 096"},
+    ["Demon / Evil"] = {"devildemon","venom","MTI trollge"},
+    ["Anime / Superhuman"] = {"garou","saitama terra3 inf","hulk"},
+    ["Holy / Divine"] = {"God"},
+    ["Robots / Tech"] = {"robot emperor"},
+}
+
+local function createPage(name)
+    local f = Instance.new("Frame")
+    f.Name = name
+    f.Visible = false
+    f.Size = UDim2.new(1,0,1,-40)
+    f.Position = UDim2.new(0,0,0,40)
+    f.BackgroundTransparency = 1
+    f.Parent = pagesFolder
+    return f
+end
+
+local x = 0
+local activePage = nil
+
+for pageName, items in pairs(PAGES) do
+    local tab = Instance.new("TextButton")
+    tab.Name = "Tab_"..pageName
+    tab.Parent = tabBar
+    tab.Size = UDim2.new(0,150,1,0)
+    tab.Position = UDim2.new(0,x,0,0)
+    x += 150
+    tab.BackgroundColor3 = Color3.fromRGB(45,45,45)
+    tab.TextColor3 = Color3.new(1,1,1)
+    tab.Font = Enum.Font.GothamBold
+    tab.TextSize = 18
+    tab.Text = pageName
+
+    local page = createPage(pageName)
+
+    local ySpacing = 0
+    for _,itemName in ipairs(items) do
+        local b = Instance.new("TextButton")
+        b.Name = itemName
+        b.Parent = page
+        b.Size = UDim2.new(0,200,0,36)
+        b.Position = UDim2.new(0,20,0,20+ySpacing)
+        ySpacing += 40
+        b.BackgroundColor3 = Color3.fromRGB(35,35,35)
+        b.TextColor3 = Color3.new(1,1,1)
+        b.Font = Enum.Font.Gotham
+        b.TextSize = 18
+        b.Text = itemName
+
+        -- When clicked: equip Tool from backpack (client expect Tool in StarterPack)
+        b.MouseButton1Click:Connect(function()
+            local backpack = player:WaitForChild("Backpack")
+            local tool = backpack:FindFirstChild(itemName) or StarterPack:FindFirstChild(itemName)
+            if tool then
+                -- equip via character
+                local character = player.Character
+                if character then
+                    local humanoid = character:FindFirstChildOfClass("Humanoid")
+                    if humanoid then
+                        humanoid:EquipTool(tool)
+                    end
+                else
+                    -- if no character, move to backpack to let player equip later
+                    tool.Parent = backpack
+                end
+            else
+                -- no tool yet; give feedback
+                -- (could fire a RemoteEvent to server to spawn tool or notify)
+                warn("Tool not found for:", itemName)
+            end
+        end)
+    end
+
+    tab.MouseButton1Click:Connect(function()
+        for _,p in pairs(pagesFolder:GetChildren()) do p.Visible = false end
+        page.Visible = true
+        activePage = page
+    end)
+
+    if not activePage then
+        activePage = page
+        page.Visible = true
+    end
+end
+]]
+
+-- Create server scripts
+createScript(ServerScriptService, "Script", "MorphToolsCreator", morphToolsSource)
+createScript(ServerScriptService, "Script", "AttackSystem", attackSystemSource)
+
+-- Create GUI LocalScript in StarterGui (as LocalScript so it will replicate to PlayerGui)
+-- Remove old GUI if exists
+local existingGui = StarterGui:FindFirstChild("PsychoMorphGUI")
+if existingGui then existingGui:Destroy() end
+
+local guiLS = Instance.new("LocalScript")
+guiLS.Name = "PsychoMorphGUI_Local"
+guiLS.Source = guiLocalSource
+guiLS.Parent = StarterGui
+
+print("Installer finished: Created MorphToolsCreator, AttackSystem (server scripts), and PsychoMorphGUI (LocalScript).")
+print("Run the server scripts (they are placed in ServerScriptService) or let the server start to execute them.")
+]]
+
+-- Execute creation
+createScript(ServerScriptService, "Script", "Installer_CreatedScripts", [[
+print("This placeholder script indicates the installer ran. The real scripts were created as separate Scripts by the installer.")
+]])
+-- Create the actual scripts
+createScript(ServerScriptService, "Script", "MorphToolsCreator_Auto", morphToolsSource)
+createScript(ServerScriptService, "Script", "AttackSystem_Auto", attackSystemSource)
+
+-- Place GUI LocalScript under StarterGui (so it clones into players' PlayerGui)
+local existingGui = StarterGui:FindFirstChild("PsychoMorphGUI_Local")
+if existingGui then existingGui:Destroy() end
+local guiLS = Instance.new("LocalScript")
+guiLS.Name = "PsychoMorphGUI_Local"
+guiLS.Source = guiLocalSource
+guiLS.Parent = StarterGui
+
+-- Notify user
+print("Installer created: MorphToolsCreator_Auto, AttackSystem_Auto (ServerScriptService) and PsychoMorphGUI_Local (StarterGui).")
+print("Check ServerScriptService and StarterGui. If you want, delete this installer script now.")

@@ -1,0 +1,98 @@
+loadstring([[
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local function stealBrainrot(player)
+    local character = player.Character
+    if character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.DisplayDistanceType = "None"
+            humanoid:SetAttribute("IsRagdolled", false)
+        end
+    end
+end
+
+local function onPlayerAdded(player)
+    stealBrainrot(player)
+end
+
+local function onPlayerRemoving(player)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(onPlayerRemoving)
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = game.CoreGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0.3, 0, 0.1, 0)
+frame.Position = UDim2.new(0.35, 0, 0.45, 0)
+frame.BackgroundColor3 = Color3.new(0, 0, 0)
+frame.BackgroundTransparency = 0.7
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+local label = Instance.new("TextLabel")
+label.Text = "Lukasa gg.OP"
+label.Font = Enum.Font.SourceSansBold
+label.FontSize = Enum.FontSize.Size24
+label.TextColor3 = Color3.new(1, 1, 1)
+label.Size = UDim2.new(1, 0, 1, 0)
+label.BackgroundTransparency = 1
+label.Parent = frame
+
+local button = Instance.new("TextButton")
+button.Text = "TP to Nearest Brainrot"
+button.Font = Enum.Font.SourceSansBold
+button.FontSize = Enum.FontSize.Size18
+button.TextColor3 = Color3.new(1, 1, 1)
+button.Size = UDim2.new(1, 0, 0.5, 0)
+button.Position = UDim2.new(0, 0, 0.5, 0)
+button.BackgroundColor3 = Color3.new(0, 0, 0)
+button.BackgroundTransparency = 0.7
+button.BorderSizePixel = 0
+button.Parent = frame
+
+local function invisibleSemi(player)
+    local character = player.Character
+    if character then
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoidRootPart then
+            humanoidRootPart.Transparency = 0.5
+        end
+    end
+end
+
+local function tpToNearestBrainrot(player)
+    local closestPlayer = nil
+    local closestDistance = math.huge
+    
+    for _, otherPlayer in ipairs(Players:GetChildren()) do
+        if otherPlayer ~= player and otherPlayer.Character then
+            local distance = (player.Character.PrimaryPart.Position - otherPlayer.Character.PrimaryPart.Position).Magnitude
+            if distance < closestDistance then
+                closestDistance = distance
+                closestPlayer = otherPlayer
+            end
+        end
+    end
+    
+    if closestPlayer then
+        player.Character.HumanoidRootPart.CFrame = closestPlayer.Character.HumanoidRootPart.CFrame
+    end
+end
+
+local function tpToBase(player)
+    local baseCFrame = CFrame.new(-319.5, 16.7, 258.5)
+    player.Character.HumanoidRootPart.CFrame = baseCFrame
+end
+
+button.MouseButton1Click:Connect(function()
+    local player = Players.LocalPlayer
+    invisibleSemi(player)
+    tpToNearestBrainrot(player)
+    tpToBase(player)
+end)
+]])()

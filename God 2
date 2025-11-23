@@ -1,0 +1,183 @@
+loadstring([[
+--================================================--
+-- ANIME GOD PACK – MORPH + SPIRAL ULT
+--================================================--
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild("PlayerGui")
+local character = player.Character or player.CharacterAdded:Wait()
+local workspace = game:GetService("Workspace")
+local Debris = game:GetService("Debris")
+
+-- Morphs & Abilities
+local Morphs = {
+    DevilGod={Color=Color3.fromRGB(255,50,0),Size=6},
+    HolyGod={Color=Color3.fromRGB(255,255,200),Size=6},
+    VoidGod={Color=Color3.fromRGB(120,0,255),Size=6},
+    UniversalGod={Color=Color3.fromRGB(0,170,255),Size=6},
+    MultiGod={Color=Color3.fromRGB(255,0,255),Size=6},
+    OmniverseGod={Color=Color3.fromRGB(255,255,255),Size=8}
+}
+
+local Abilities = {
+    DevilGod = {"Hellfire Blast","Inferno Wave","Demon Strike","Lava Surge","Dark Flames","Flame Tornado","Shadow Fire","Hellstorm","Burning Claws","Apocalypse Fire"},
+    HolyGod = {"Divine Light","Sacred Beam","Healing Rays","Holy Strike","Blessed Wave","Radiant Burst","Angel Wings","Light Nova","Celestial Blade","Heaven's Wrath"},
+    VoidGod = {"Shadow Rift","Dark Portal","Void Strike","Nightmare Wave","Oblivion Burst","Eclipse","Phantom Slash","Black Hole","Abyssal Chains","Void Apocalypse"},
+    UniversalGod = {"Starfall","Comet Strike","Galactic Beam","Cosmic Pulse","Nova Blast","Meteor Shower","Black Star","Supernova","Quantum Strike","Universe Collapse"},
+    MultiGod = {"Rainbow Slash","Prismatic Beam","Color Burst","Spectrum Wave","Aurora Strike","Chromatic Nova","Multiverse Pulse","Holographic Blast","Photon Surge","Ultimate Spectrum"},
+    OmniverseGod = {"Devine Omni Strike","Eternal Blast","Infinite Wave","Cosmic Apocalypse","Absolute Nova","Omni Burst","All-Power Strike","Universal Annihilation","Multiversal Collapse","Omniverse Wrath"}
+}
+
+-- GUI
+local ScreenGui = Instance.new("ScreenGui", PlayerGui)
+ScreenGui.Name="MorphGUI"
+ScreenGui.ResetOnSpawn=false
+
+local MenuFrame = Instance.new("Frame", ScreenGui)
+MenuFrame.Size = UDim2.new(0,300,0,450)
+MenuFrame.Position = UDim2.new(0.05,0,0.2,0)
+MenuFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+MenuFrame.BackgroundTransparency = 0.2
+MenuFrame.Visible=true
+
+local function createLabel(text,pos,color)
+    local lbl = Instance.new("TextLabel",ScreenGui)
+    lbl.Size=UDim2.new(0,200,0,40)
+    lbl.Position=pos
+    lbl.TextScaled=true
+    lbl.BackgroundTransparency=0.3
+    lbl.BackgroundColor3=Color3.fromRGB(0,0,0)
+    lbl.TextColor3=color
+    lbl.Text=text
+    return lbl
+end
+
+local powerLabel = createLabel("Aura Power: 1",UDim2.new(0.8,0,0.9,0),Color3.fromRGB(255,255,0))
+local chainLabel = createLabel("Chain: 0",UDim2.new(0.8,0,0.85,0),Color3.fromRGB(255,0,0))
+local damageLabel = createLabel("Damage Pulse: 0",UDim2.new(0.8,0,0.8,0),Color3.fromRGB(0,255,255))
+
+local chainCount=0
+local lastUsed=0
+local powerLevel=1
+
+-- Aura
+local auraPart=nil
+local function createAura(color,size)
+    if auraPart then auraPart:Destroy() end
+    local part=Instance.new("Part",workspace)
+    part.Anchored=true
+    part.CanCollide=false
+    part.Transparency=0.5
+    part.Material=Enum.Material.Neon
+    part.Color=color
+    part.Size=Vector3.new(size,size,size)
+    auraPart=part
+end
+
+-- Anime Projektile
+local function fireAnimeProjectile(index,preset,direction)
+    local proj=Instance.new("Part",workspace)
+    proj.Anchored=false
+    proj.CanCollide=false
+    proj.Shape=index%2==0 and Enum.PartType.Ball or Enum.PartType.Cylinder
+    proj.Size=Vector3.new(1+index*0.3,1+index*0.3,1+index*0.3)
+    proj.CFrame=CFrame.new(character.HumanoidRootPart.Position, character.HumanoidRootPart.Position+direction)
+    local colors={Color3.fromRGB(255,50,0),Color3.fromRGB(0,200,255),Color3.fromRGB(255,255,0),Color3.fromRGB(180,0,255),Color3.fromRGB(0,255,0),Color3.fromRGB(255,0,255),Color3.fromRGB(255,120,50),Color3.fromRGB(0,0,0),Color3.fromRGB(255,255,255),Color3.fromRGB(255,100,100)}
+    proj.Color=colors[index%#colors+1]
+    proj.Material=Enum.Material.Neon
+
+    local bv=Instance.new("BodyVelocity",proj)
+    bv.MaxForce=Vector3.new(1e5,1e5,1e5)
+    bv.Velocity=direction*(40+chainCount*3)
+    game:GetService("Debris"):AddItem(proj,3)
+
+    local pe=Instance.new("ParticleEmitter",proj)
+    pe.Texture="rbxassetid://243660364"
+    pe.Lifetime=NumberRange.new(0.2,0.6)
+    pe.Rate=200+index*10
+    pe.Speed=NumberRange.new(15+index,35)
+    pe.Size=NumberSequence.new({NumberSequenceKeypoint.new(0,0.5+index*0.05),NumberSequenceKeypoint.new(1,0)})
+
+    local light=Instance.new("PointLight",proj)
+    light.Color=proj.Color
+    light.Range=20+index
+    light.Brightness=3
+end
+
+-- Morph Buttons + Tools + Spiral ULT
+local morphOrder={"DevilGod","HolyGod","VoidGod","UniversalGod","MultiGod","OmniverseGod"}
+for i,morphName in ipairs(morphOrder) do
+    local Btn=Instance.new("TextButton",MenuFrame)
+    Btn.Size=UDim2.new(1,-20,0,40)
+    Btn.Position=UDim2.new(0,10,0,(i-1)*50+10)
+    Btn.Text=morphName
+    Btn.TextScaled=true
+    Btn.BackgroundColor3=Color3.fromRGB(50,50,50)
+    Btn.TextColor3=Color3.fromRGB(255,255,255)
+
+    Btn.MouseButton1Click:Connect(function()
+        local preset=Morphs[morphName]
+        createAura(preset.Color,preset.Size)
+        local backpack=player:WaitForChild("Backpack")
+        backpack:ClearAllChildren()
+        for idx,abilityName in ipairs(Abilities[morphName]) do
+            local tool=Instance.new("Tool")
+            tool.Name=abilityName
+            tool.RequiresHandle=false
+            tool.CanBeDropped=false
+            tool.Activated:Connect(function()
+                local now=tick()
+                if now-lastUsed>3 then chainCount=0 end
+                chainCount+=1
+                lastUsed=now
+                local damage=10+chainCount*2
+                damageLabel.Text="Damage Pulse: "..damage
+                chainLabel.Text="Chain: "..chainCount
+                powerLevel=math.min(10,powerLevel+0.5)
+                powerLabel.Text="Aura Power: "..string.format("%.1f",powerLevel)
+                local dir=character.HumanoidRootPart.CFrame.LookVector
+                fireAnimeProjectile(idx,preset,dir)
+            end)
+            tool.Parent=backpack
+        end
+
+        -- Spiral ULT Button
+        local ultBtn=Instance.new("TextButton",MenuFrame)
+        ultBtn.Size=UDim2.new(1,-20,0,40)
+        ultBtn.Position=UDim2.new(0,10,0,(i-1)*50+45)
+        ultBtn.Text=morphName.." ULT"
+        ultBtn.TextScaled=true
+        ultBtn.BackgroundColor3=Color3.fromRGB(200,50,50)
+        ultBtn.TextColor3=Color3.fromRGB(255,255,255)
+        ultBtn.MouseButton1Click:Connect(function()
+            local preset=Morphs[morphName]
+            local baseDir = character.HumanoidRootPart.CFrame.LookVector
+            for idx=1,10 do
+                chainCount+=1
+                powerLevel=math.min(10,powerLevel+0.5)
+                powerLabel.Text="Aura Power: "..string.format("%.1f",powerLevel)
+                chainLabel.Text="Chain: "..chainCount
+                -- Spiral Richtung berechnen
+                local angle = math.rad(idx*36) -- 360 Grad / 10
+                local rot = CFrame.fromAxisAngle(Vector3.new(0,1,0), angle)
+                local direction = (rot * baseDir)
+                fireAnimeProjectile(idx,preset,direction.LookVector)
+            end
+        end)
+    end)
+end
+
+-- Toggle/Katsche Button
+local toggleBtn=Instance.new("TextButton",ScreenGui)
+toggleBtn.Size=UDim2.new(0,60,0,60)
+toggleBtn.Position=UDim2.new(0,20,0,20)
+toggleBtn.Text="☰"
+toggleBtn.TextScaled=true
+toggleBtn.BackgroundColor3=Color3.fromRGB(50,50,50)
+toggleBtn.TextColor3=Color3.fromRGB(255,255,255)
+local menuOpen=true
+toggleBtn.MouseButton1Click:Connect(function()
+    menuOpen=not menuOpen
+    MenuFrame.Visible=menuOpen
+end)
+]])()

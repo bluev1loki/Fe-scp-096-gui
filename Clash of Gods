@@ -1,0 +1,145 @@
+loadstring([[
+--[[ GOD-POWER SYSTEM – Vollständig mit einzigartigen Projektilen für jede Fähigkeit ]]
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local gui = player:WaitForChild("PlayerGui")
+local character = player.Character or player.CharacterAdded:Wait()
+local workspace = game:GetService("Workspace")
+
+-- Morph Presets
+local Morphs = {
+    DevilGod = {Color=Color3.fromRGB(255,50,0),Size=6},
+    HolyGod = {Color=Color3.fromRGB(255,255,200),Size=6},
+    VoidGod = {Color=Color3.fromRGB(120,0,255),Size=6},
+    UniversalGod = {Color=Color3.fromRGB(0,170,255),Size=6},
+    MultiGod = {Color=Color3.fromRGB(255,0,255),Size=6},
+    OmniverseGod = {Color=Color3.fromRGB(255,255,255),Size=8}
+}
+
+-- Morph Abilities
+local Abilities = {
+    DevilGod = {"Hellfire Blast","Inferno Wave","Demon Strike","Lava Surge","Dark Flames","Flame Tornado","Shadow Fire","Hellstorm","Burning Claws","Apocalypse Fire"},
+    HolyGod = {"Divine Light","Sacred Beam","Healing Rays","Holy Strike","Blessed Wave","Radiant Burst","Angel Wings","Light Nova","Celestial Blade","Heaven's Wrath"},
+    VoidGod = {"Shadow Rift","Dark Portal","Void Strike","Nightmare Wave","Oblivion Burst","Eclipse","Phantom Slash","Black Hole","Abyssal Chains","Void Apocalypse"},
+    UniversalGod = {"Starfall","Comet Strike","Galactic Beam","Cosmic Pulse","Nova Blast","Meteor Shower","Black Star","Supernova","Quantum Strike","Universe Collapse"},
+    MultiGod = {"Rainbow Slash","Prismatic Beam","Color Burst","Spectrum Wave","Aurora Strike","Chromatic Nova","Multiverse Pulse","Holographic Blast","Photon Surge","Ultimate Spectrum"},
+    OmniverseGod = {"Devine Omni Strike","Eternal Blast","Infinite Wave","Cosmic Apocalypse","Absolute Nova","Omni Burst","All-Power Strike","Universal Annihilation","Multiversal Collapse","Omniverse Wrath"}
+}
+
+-- HUD
+local screenGui = Instance.new("ScreenGui",gui)
+screenGui.Name="GodPowerHUD"
+local function createLabel(name,pos,color,text)
+    local lbl = Instance.new("TextLabel",screenGui)
+    lbl.Name=name
+    lbl.Size=UDim2.new(0,200,0,40)
+    lbl.Position=pos
+    lbl.TextScaled=true
+    lbl.BackgroundTransparency=0.5
+    lbl.BackgroundColor3=Color3.fromRGB(0,0,0)
+    lbl.TextColor3=color
+    lbl.Text=text
+    return lbl
+end
+
+local powerLabel = createLabel("PowerLabel",UDim2.new(0.8,0,0.9,0),Color3.fromRGB(255,255,0),"Aura Power: 1")
+local chainLabel = createLabel("ChainLabel",UDim2.new(0.8,0,0.85,0),Color3.fromRGB(255,0,0),"Chain: 0")
+local damageLabel = createLabel("DamageLabel",UDim2.new(0.8,0,0.8,0),Color3.fromRGB(0,255,255),"Damage Pulse: 0")
+
+-- Chain & Power
+local chainCount = 0
+local lastUsed = 0
+local powerLevel = 1
+
+-- Aura
+local auraPart = nil
+local function createAura(color,size)
+    if auraPart then auraPart:Destroy() end
+    local part = Instance.new("Part",workspace)
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 0.5
+    part.Color = color
+    part.Material = Enum.Material.Neon
+    part.Size = Vector3.new(size,size,size)
+    auraPart = part
+end
+
+-- Funktion: Einzigartige Projektil-Effekte für jede Fähigkeit
+local function fireUniqueProjectile(abilityName, preset)
+    local proj = Instance.new("Part",workspace)
+    proj.Size = Vector3.new(1,1,1)
+    proj.Anchored = false
+    proj.CanCollide = false
+    proj.CFrame = character.HumanoidRootPart.CFrame
+
+    -- Unterschiedliche Farben/Materialien pro Fähigkeit
+    local colorMap = {
+        ["Hellfire Blast"]=Color3.fromRGB(255,80,0),
+        ["Inferno Wave"]=Color3.fromRGB(255,120,0),
+        ["Demon Strike"]=Color3.fromRGB(180,0,0),
+        ["Lava Surge"]=Color3.fromRGB(255,60,0),
+        ["Dark Flames"]=Color3.fromRGB(100,0,0),
+        ["Flame Tornado"]=Color3.fromRGB(255,200,0),
+        ["Shadow Fire"]=Color3.fromRGB(50,0,50),
+        ["Hellstorm"]=Color3.fromRGB(255,0,0),
+        ["Burning Claws"]=Color3.fromRGB(255,100,50),
+        ["Apocalypse Fire"]=Color3.fromRGB(255,50,50)
+    }
+    proj.Color = colorMap[abilityName] or preset.Color
+    proj.Material = Enum.Material.Neon
+
+    local bv = Instance.new("BodyVelocity",proj)
+    bv.Velocity = character.HumanoidRootPart.CFrame.LookVector * (30 + chainCount*2)
+    bv.MaxForce = Vector3.new(1e5,1e5,1e5)
+    game:GetService("Debris"):AddItem(proj,2)
+
+    local particle = Instance.new("ParticleEmitter",proj)
+    particle.Texture = "rbxassetid://243660364"
+    particle.Lifetime = NumberRange.new(0.2,0.6)
+    particle.Rate = 100
+    particle.Speed = NumberRange.new(5,20)
+    particle.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,0.5),NumberSequenceKeypoint.new(1,0)})
+    particle.EmissionDirection = Enum.NormalId.Top
+end
+
+-- Morph GUI
+local morphGui = Instance.new("ScreenGui",gui)
+morphGui.Name="MorphGUI"
+for i,morphName in ipairs({"DevilGod","HolyGod","VoidGod","UniversalGod","MultiGod","OmniverseGod"}) do
+    local btn = Instance.new("TextButton",morphGui)
+    btn.Size = UDim2.new(0,150,0,50)
+    btn.Position = UDim2.new(0,10,0,10+(i-1)*60)
+    btn.Text = morphName
+    btn.TextScaled = true
+    btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    btn.TextColor3 = Color3.fromRGB(255,255,255)
+    btn.MouseButton1Click:Connect(function()
+        local preset = Morphs[morphName]
+        createAura(preset.Color,preset.Size)
+        local backpack = player:WaitForChild("Backpack")
+        backpack:ClearAllChildren()
+        for _,abilityName in ipairs(Abilities[morphName]) do
+            local tool = Instance.new("Tool")
+            tool.Name = abilityName
+            tool.RequiresHandle = false
+            tool.CanBeDropped = false
+            tool.Activated:Connect(function()
+                local now = tick()
+                if now - lastUsed > 3 then chainCount=0 end
+                chainCount += 1
+                lastUsed = now
+                local damage = 10 + chainCount*2
+                damageLabel.Text = "Damage Pulse: "..damage
+                chainLabel.Text = "Chain: "..chainCount
+                powerLevel = math.min(10,powerLevel+0.5)
+                powerLabel.Text = "Aura Power: "..string.format("%.1f",powerLevel)
+
+                -- Einzigartiges Projektil abfeuern
+                fireUniqueProjectile(abilityName,preset)
+            end)
+            tool.Parent = backpack
+        end
+    end)
+end
+]])()

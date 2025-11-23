@@ -1,0 +1,282 @@
+loadstring([[
+--================================================--
+-- ANIME GOD PACK – RAINBOW AURA PULSE
+--================================================--
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild("PlayerGui")
+local character = player.Character or player.CharacterAdded:Wait()
+local workspace = game:GetService("Workspace")
+local Debris = game:GetService("Debris")
+local RunService = game:GetService("RunService")
+local camera = workspace.CurrentCamera
+
+-- Morphs
+local Morphs = {
+    DevilGod={Color=Color3.fromRGB(255,50,0),Size=6},
+    HolyGod={Color=Color3.fromRGB(255,255,200),Size=6},
+    VoidGod={Color=Color3.fromRGB(120,0,255),Size=6},
+    UniversalGod={Color=Color3.fromRGB(0,170,255),Size=6},
+    MultiGod={Color=Color3.fromRGB(255,0,255),Size=6},
+    OmniverseGod={Color=Color3.fromRGB(255,255,255),Size=8}
+}
+
+-- GUI
+local ScreenGui = Instance.new("ScreenGui", PlayerGui)
+ScreenGui.Name="MorphGUI"
+ScreenGui.ResetOnSpawn=false
+local MenuFrame = Instance.new("Frame", ScreenGui)
+MenuFrame.Size = UDim2.new(0,300,0,700)
+MenuFrame.Position = UDim2.new(0.05,0,0.2,0)
+MenuFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+MenuFrame.BackgroundTransparency = 0.2
+MenuFrame.Visible=true
+
+local function createLabel(text,pos,color)
+    local lbl = Instance.new("TextLabel",ScreenGui)
+    lbl.Size=UDim2.new(0,200,0,40)
+    lbl.Position=pos
+    lbl.TextScaled=true
+    lbl.BackgroundTransparency=0.3
+    lbl.BackgroundColor3=Color3.fromRGB(0,0,0)
+    lbl.TextColor3=color
+    lbl.Text=text
+    return lbl
+end
+
+local powerLabel = createLabel("Aura Power: 1",UDim2.new(0.8,0,0.9,0),Color3.fromRGB(255,255,0))
+local chainLabel = createLabel("Chain: 0",UDim2.new(0.8,0,0.85,0),Color3.fromRGB(255,0,0))
+local comboLabel = createLabel("Combo x1",UDim2.new(0.8,0,0.8,0),Color3.fromRGB(0,255,255))
+
+local chainCount=0
+local powerLevel=1
+local auraActive=false
+local auraParts={}
+local bossModeActive=false
+local infiniteActive=false
+local comboMultiplier=1
+local lastAttackTime=tick()
+local cinematicActive=false
+
+-- Rainbow Aura Pulse
+local function createAura(color,size)
+    local part=Instance.new("Part",workspace)
+    part.Anchored=true
+    part.CanCollide=false
+    part.Transparency=0.3
+    part.Material=Enum.Material.Neon
+    part.Color=color
+    part.Size=Vector3.new(size*1.5,size*1.5,size*1.5)
+    table.insert(auraParts,part)
+end
+
+RunService.RenderStepped:Connect(function()
+    if auraActive then
+        local t=tick()
+        for i,part in pairs(auraParts) do
+            -- Rainbow Pulse
+            local r = (math.sin(t*5*comboMultiplier+i)+1)/2
+            local g = (math.sin(t*4*comboMultiplier+1+i)+1)/2
+            local b = (math.sin(t*6*comboMultiplier+2+i)+1)/2
+            part.Color=Color3.new(r,g,b)
+            part.CFrame=CFrame.new(character.HumanoidRootPart.Position)*CFrame.Angles(0,t*3*comboMultiplier,0)
+            -- Pulsieren (Größe)
+            local pulse = 1 + 0.3*math.sin(t*5*comboMultiplier+i)
+            part.Size = Vector3.new(Morphs.DevilGod.Size*1.5*pulse, Morphs.DevilGod.Size*1.5*pulse, Morphs.DevilGod.Size*1.5*pulse)
+        end
+    end
+end)
+
+-- Projektil + Explosion + Cinematic + Aura Interaction
+local function fireAnimeProjectile(index,preset,direction,positionMultiplier)
+    local proj=Instance.new("Part",workspace)
+    proj.Anchored=false
+    proj.CanCollide=false
+    proj.Shape=index%2==0 and Enum.PartType.Ball or Enum.PartType.Cylinder
+    proj.Size=Vector3.new((1+index*0.4)*comboMultiplier,(1+index*0.4)*comboMultiplier,(1+index*0.4)*comboMultiplier)
+    local startPos = character.HumanoidRootPart.Position + Vector3.new(math.random(-positionMultiplier,positionMultiplier),0,math.random(-positionMultiplier,positionMultiplier))
+    proj.CFrame=CFrame.new(startPos, startPos+direction)
+    proj.Color=preset.Color
+    proj.Material=Enum.Material.Neon
+    local bv=Instance.new("BodyVelocity",proj)
+    bv.MaxForce=Vector3.new(1e5,1e5,1e5)
+    bv.Velocity=direction*(50+chainCount*4*comboMultiplier)
+    Debris:AddItem(proj,3)
+
+    local pe=Instance.new("ParticleEmitter",proj)
+    pe.Texture="rbxassetid://243660364"
+    pe.Lifetime=NumberRange.new(0.3,0.8)
+    pe.Rate=400+index*20*comboMultiplier
+    pe.Speed=NumberRange.new(25*comboMultiplier,45*comboMultiplier)
+    pe.Size=NumberSequence.new({NumberSequenceKeypoint.new(0,0.7+index*0.15),NumberSequenceKeypoint.new(1,0)})
+
+    local light=Instance.new("PointLight",proj)
+    light.Color=proj.Color
+    light.Range=35+index*comboMultiplier
+    light.Brightness=7*comboMultiplier
+
+    local fireSound=Instance.new("Sound",proj)
+    fireSound.SoundId="rbxassetid://911882514"
+    fireSound.Volume=1.2*comboMultiplier
+    fireSound:Play()
+
+    -- Cinematic Kamera & Aura Boost
+    if cinematicActive then
+        local origCF=camera.CFrame
+        spawn(function()
+            local t0=tick()
+            while tick()-t0<0.3 do
+                camera.CFrame=origCF*CFrame.new(math.random(-3,3)*comboMultiplier,math.random(-3,3)*comboMultiplier,math.random(-3,3)*comboMultiplier)
+                RunService.RenderStepped:Wait()
+            end
+            camera.CFrame=origCF
+        end)
+        -- Aura kurze Farb-Explosion
+        for _,part in pairs(auraParts) do
+            part.Color = Color3.new(math.random(),math.random(),math.random())
+        end
+    end
+
+    delay(0.5,function()
+        local explosion=Instance.new("Explosion",workspace)
+        explosion.Position=proj.Position
+        explosion.BlastRadius=(15+index)*comboMultiplier
+        explosion.BlastPressure=800000*comboMultiplier
+        explosion.ExplosionType=Enum.ExplosionType.NoCraters
+        explosion.DestroyJointRadiusPercent=0
+        local boomSound=Instance.new("Sound",workspace)
+        boomSound.SoundId="rbxassetid://138186576"
+        boomSound.Volume=2.5*comboMultiplier
+        boomSound.PlayOnRemove=true
+        boomSound:Destroy()
+        Debris:AddItem(explosion,1)
+
+        -- Slow-Motion Effekt
+        if cinematicActive then
+            workspace.DistributedGameTime = workspace.DistributedGameTime*0.5
+            wait(0.15)
+            workspace.DistributedGameTime = workspace.DistributedGameTime*2
+        end
+
+        proj:Destroy()
+    end)
+
+    -- Combo Berechnung
+    local currentTime=tick()
+    if currentTime - lastAttackTime < 2 then
+        comboMultiplier=math.min(5, comboMultiplier+0.2)
+    else
+        comboMultiplier=1
+    end
+    lastAttackTime=currentTime
+    comboLabel.Text="Combo x"..string.format("%.1f",comboMultiplier)
+end
+
+-- Boss-Fight + Cinematic + Rainbow Buttons
+local bossBtn=Instance.new("TextButton",MenuFrame)
+bossBtn.Size=UDim2.new(1,-20,0,50)
+bossBtn.Position=UDim2.new(0,10,0,10)
+bossBtn.Text="BOSS-FIGHT + CINEMATIC + RAINBOW"
+bossBtn.TextScaled=true
+bossBtn.BackgroundColor3=Color3.fromRGB(255,0,255)
+bossBtn.TextColor3=Color3.fromRGB(255,255,255)
+
+local stopBtn=Instance.new("TextButton",MenuFrame)
+stopBtn.Size=UDim2.new(1,-20,0,50)
+stopBtn.Position=UDim2.new(0,10,0,70)
+stopBtn.Text="STOP BOSS-FIGHT"
+stopBtn.TextScaled=true
+stopBtn.BackgroundColor3=Color3.fromRGB(50,50,50)
+stopBtn.TextColor3=Color3.fromRGB(255,255,255)
+
+local cinematicToggle=Instance.new("TextButton",MenuFrame)
+cinematicToggle.Size=UDim2.new(1,-20,0,50)
+cinematicToggle.Position=UDim2.new(0,10,0,130)
+cinematicToggle.Text="TOGGLE CINEMATIC MODE"
+cinematicToggle.TextScaled=true
+cinematicToggle.BackgroundColor3=Color3.fromRGB(0,200,255)
+cinematicToggle.TextColor3=Color3.fromRGB(255,255,255)
+cinematicToggle.MouseButton1Click:Connect(function()
+    cinematicActive = not cinematicActive
+end)
+
+local function epicCameraZoom(targetPos)
+    local origCF=camera.CFrame
+    spawn(function()
+        local t0=tick()
+        while tick()-t0<0.6 do
+            local zoomPos = (character.HumanoidRootPart.Position + targetPos)/2 + Vector3.new(0,15*comboMultiplier,25*comboMultiplier)
+            camera.CFrame=CFrame.new(zoomPos, targetPos) * CFrame.Angles(0,math.rad(tick()*200*comboMultiplier),0)
+            RunService.RenderStepped:Wait()
+        end
+        camera.CFrame=origCF
+    end)
+end
+
+bossBtn.MouseButton1Click:Connect(function()
+    if not bossModeActive then
+        bossModeActive=true
+        infiniteActive=true
+        auraActive=true
+        for name,preset in pairs(Morphs) do
+            createAura(preset.Color,preset.Size)
+        end
+        spawn(function()
+            while bossModeActive do
+                local bossTarget=nil
+                local maxHP=0
+                for _,plr in pairs(Players:GetPlayers()) do
+                    if plr~=player and plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                        local hp=plr.Character.Humanoid.Health
+                        if hp>maxHP then
+                            maxHP=hp
+                            bossTarget=plr.Character.HumanoidRootPart.Position
+                        end
+                    end
+                end
+                if bossTarget then
+                    for idx=1,50 do
+                        chainCount+=1
+                        powerLevel=math.min(15,powerLevel+1)
+                        powerLabel.Text="Aura Power: "..string.format("%.1f",powerLevel)
+                        chainLabel.Text="Chain: "..chainCount
+                        for name,preset in pairs(Morphs) do
+                            fireAnimeProjectile(idx,preset,(bossTarget-character.HumanoidRootPart.Position).Unit,10)
+                            epicCameraZoom(bossTarget)
+                        end
+                        wait(0.05)
+                    end
+                end
+                wait(2)
+            end
+        end)
+    end
+end)
+
+stopBtn.MouseButton1Click:Connect(function()
+    bossModeActive=false
+    infiniteActive=false
+    auraActive=false
+    comboMultiplier=1
+    comboLabel.Text="Combo x1"
+    cinematicActive=false
+    for _,part in pairs(auraParts) do
+        part:Destroy()
+    end
+    auraParts={}
+end)
+
+-- Toggle/Katsche
+local toggleBtn=Instance.new("TextButton",ScreenGui)
+toggleBtn.Size=UDim2.new(0,60,0,60)
+toggleBtn.Position=UDim2.new(0,20,0,20)
+toggleBtn.Text="☰"
+toggleBtn.TextScaled=true
+toggleBtn.BackgroundColor3=Color3.fromRGB(50,50,50)
+toggleBtn.TextColor3=Color3.fromRGB(255,255,255)
+local menuOpen=true
+toggleBtn.MouseButton1Click:Connect(function()
+    menuOpen=not menuOpen
+    MenuFrame.Visible=menuOpen
+end)
+]])()

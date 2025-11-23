@@ -1,0 +1,218 @@
+loadstring([[
+--================================================--
+-- ANIME GOD PACK – MORPH GLOW ANIMATION
+--================================================--
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
+local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild("PlayerGui")
+local character = player.Character or player.CharacterAdded:Wait()
+local workspace = game:GetService("Workspace")
+local camera = workspace.CurrentCamera
+
+-- Morphs
+local Morphs = {
+    DevilGod={Color=Color3.fromRGB(255,50,0),Size=6},
+    HolyGod={Color=Color3.fromRGB(255,255,200),Size=6},
+    VoidGod={Color=Color3.fromRGB(120,0,255),Size=6},
+    UniversalGod={Color=Color3.fromRGB(0,170,255),Size=6},
+    MultiGod={Color=Color3.fromRGB(255,0,255),Size=6},
+    OmniverseGod={Color=Color3.fromRGB(255,255,255),Size=8}
+}
+
+-- RemoteEvent automatisch erstellen
+local eventName="AnimeGodTrigger"
+local animeEvent = ReplicatedStorage:FindFirstChild(eventName)
+if not animeEvent then
+    animeEvent = Instance.new("RemoteEvent")
+    animeEvent.Name=eventName
+    animeEvent.Parent=ReplicatedStorage
+end
+
+-- Variablen
+local chainCount=0
+local powerLevel=1
+local auraActive=false
+local auraParts={}
+local comboMultiplier=1
+local lastAttackTime=tick()
+local cinematicActive=false
+local morphParts={}
+
+-- Morph Glow & Animation
+for name,preset in pairs(Morphs) do
+    local part=Instance.new("Part",workspace)
+    part.Name=name
+    part.Anchored=true
+    part.CanCollide=false
+    part.Size=Vector3.new(preset.Size,preset.Size,preset.Size)
+    part.Material=Enum.Material.Neon
+    part.Color=preset.Color
+    part.Transparency=0.6
+    part.CFrame=CFrame.new(character.HumanoidRootPart.Position)
+    morphParts[name]=part
+end
+
+local function animateMorphs()
+    for name,part in pairs(morphParts) do
+        local t=tick()
+        local glowPulse = 0.3 + 0.3*math.sin(t*8)
+        part.Transparency = 0.6 - glowPulse/2
+        local scalePulse = 1 + 0.2*math.sin(t*6)
+        part.Size = Vector3.new(Morphs[name].Size*scalePulse,Morphs[name].Size*scalePulse,Morphs[name].Size*scalePulse)
+        part.CFrame = CFrame.new(character.HumanoidRootPart.Position)*CFrame.Angles(0,t*2,0)
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    if auraActive then
+        animateMorphs()
+    end
+end)
+
+-- Optimierte Aura erstellen
+local function createAura(color,size)
+    local part=Instance.new("Part",workspace)
+    part.Anchored=true
+    part.CanCollide=false
+    part.Transparency=0.3
+    part.Material=Enum.Material.Neon
+    part.Color=color
+    part.Size=Vector3.new(size*1.5,size*1.5,size*1.5)
+    local pe=Instance.new("ParticleEmitter",part)
+    pe.Texture="rbxassetid://243660364"
+    pe.Lifetime=NumberRange.new(0.5,1)
+    pe.Rate=0
+    pe.Speed=NumberRange.new(25*comboMultiplier,45*comboMultiplier)
+    table.insert(auraParts,{Part=part,Emitter=pe})
+end
+
+RunService.RenderStepped:Connect(function()
+    if auraActive then
+        local t=tick()
+        for _,data in pairs(auraParts) do
+            local part = data.Part
+            local pulse = 1 + 0.3*math.sin(t*5*comboMultiplier)
+            part.Size = Vector3.new(Morphs.DevilGod.Size*1.5*pulse, Morphs.DevilGod.Size*1.5*pulse, Morphs.DevilGod.Size*1.5*pulse)
+            part.Color=Color3.fromHSV((t*0.1)%1,1,1)
+            part.CFrame=CFrame.new(character.HumanoidRootPart.Position)*CFrame.Angles(0,t*3*comboMultiplier,0)
+            data.Emitter:Emit(5)
+            if not data.Sound then
+                local auraSound = Instance.new("Sound",part)
+                auraSound.SoundId="rbxassetid://911882514"
+                auraSound.Volume=0.2*comboMultiplier
+                auraSound.Pitch=1+comboMultiplier/5
+                auraSound.Looped=false
+                auraSound:Play()
+                data.Sound=auraSound
+            end
+        end
+    end
+end)
+
+-- Projektil/Explosion/Cinematic
+local function fireAnimeProjectile(index,preset,direction,positionMultiplier)
+    local proj=Instance.new("Part",workspace)
+    proj.Anchored=false
+    proj.CanCollide=false
+    proj.Shape=index%2==0 and Enum.PartType.Ball or Enum.PartType.Cylinder
+    proj.Size=Vector3.new((1+index*0.4)*comboMultiplier,(1+index*0.4)*comboMultiplier,(1+index*0.4)*comboMultiplier)
+    proj.CFrame=CFrame.new(character.HumanoidRootPart.Position + Vector3.new(math.random(-positionMultiplier,positionMultiplier),0,math.random(-positionMultiplier,positionMultiplier)), workspace.CurrentCamera.CFrame.LookVector+character.HumanoidRootPart.Position)
+    proj.Color=preset.Color
+    proj.Material=Enum.Material.Neon
+
+    local bv=Instance.new("BodyVelocity",proj)
+    bv.MaxForce=Vector3.new(1e5,1e5,1e5)
+    bv.Velocity=direction*(50+chainCount*4*comboMultiplier)
+
+    Debris:AddItem(proj,3)
+
+    local pe=Instance.new("ParticleEmitter",proj)
+    pe.Texture="rbxassetid://243660364"
+    pe.Lifetime=NumberRange.new(0.3,0.8)
+    pe.Rate=200
+    pe.Speed=NumberRange.new(25*comboMultiplier,45*comboMultiplier)
+    pe:Emit(10)
+
+    delay(0.5,function()
+        local explosion=Instance.new("Explosion",workspace)
+        explosion.Position=proj.Position
+        explosion.BlastRadius=(15+index)*comboMultiplier
+        explosion.BlastPressure=800000*comboMultiplier
+        explosion.ExplosionType=Enum.ExplosionType.NoCraters
+        explosion.DestroyJointRadiusPercent=0
+        local boomSound=Instance.new("Sound",workspace)
+        boomSound.SoundId="rbxassetid://138186576"
+        boomSound.Volume=2.5*comboMultiplier
+        boomSound.Pitch=1+comboMultiplier/5
+        boomSound.PlayOnRemove=true
+        boomSound:Destroy()
+        Debris:AddItem(explosion,1)
+        proj:Destroy()
+    end)
+
+    local currentTime=tick()
+    if currentTime - lastAttackTime < 2 then
+        comboMultiplier=math.min(5, comboMultiplier+0.2)
+    else
+        comboMultiplier=1
+    end
+    lastAttackTime=currentTime
+end
+
+-- RemoteEvent Listener
+animeEvent.OnClientEvent:Connect(function(action)
+    if action=="ActivateAura" then
+        auraActive=true
+        for name,preset in pairs(Morphs) do
+            createAura(preset.Color,preset.Size)
+        end
+    elseif action=="DeactivateAura" then
+        auraActive=false
+        for _,data in pairs(auraParts) do
+            data.Part:Destroy()
+        end
+        auraParts={}
+    elseif action=="FireProjectile" then
+        for name,preset in pairs(Morphs) do
+            fireAnimeProjectile(math.random(1,10),preset,(workspace.CurrentCamera.CFrame.LookVector).Unit,10)
+        end
+    elseif action=="ToggleCinematic" then
+        cinematicActive = not cinematicActive
+    elseif action=="ResetCombo" then
+        comboMultiplier=1
+    end
+end)
+
+-- Hotkeys/Tastenkürzel
+UserInputService.InputBegan:Connect(function(input,gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType==Enum.UserInputType.Keyboard then
+        local key=input.KeyCode
+        if key==Enum.KeyCode.Q then -- Aura toggle
+            auraActive = not auraActive
+            if auraActive then
+                for name,preset in pairs(Morphs) do
+                    createAura(preset.Color,preset.Size)
+                end
+            else
+                for _,data in pairs(auraParts) do
+                    data.Part:Destroy()
+                end
+                auraParts={}
+            end
+        elseif key==Enum.KeyCode.E then -- Projektils feuern
+            for name,preset in pairs(Morphs) do
+                fireAnimeProjectile(math.random(1,10),preset,(workspace.CurrentCamera.CFrame.LookVector).Unit,10)
+            end
+        elseif key==Enum.KeyCode.R then -- Cinematic toggle
+            cinematicActive = not cinematicActive
+        elseif key==Enum.KeyCode.F then -- Combo zurücksetzen
+            comboMultiplier=1
+        end
+    end
+end)
+]])()

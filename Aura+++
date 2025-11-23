@@ -1,0 +1,310 @@
+loadstring([[
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = workspace.CurrentCamera
+
+local CurrentAura = "Red"
+
+-- Attack Data (Beispiele)
+local AttackData = {
+    Red = {
+        {Name="Fireball", Color=Color3.fromRGB(255,50,0), Size=Vector3.new(2,2,2), Pattern="Straight"},
+        {Name="FlameWhip", Color=Color3.fromRGB(255,100,0), Size=Vector3.new(1,4,1), Pattern="Spiral"},
+        {Name="LavaSpike", Color=Color3.fromRGB(255,0,0), Size=Vector3.new(1,3,1), Pattern="Zigzag"},
+        {Name="Meteor", Color=Color3.fromRGB(200,50,0), Size=Vector3.new(3,3,3), Pattern="Downward"},
+        {Name="ExplosionBall", Color=Color3.fromRGB(255,150,50), Size=Vector3.new(2,2,2), Pattern="Straight"},
+        {Name="FireWave", Color=Color3.fromRGB(255,80,0), Size=Vector3.new(5,1,1), Pattern="Wave"},
+        {Name="BlazingStar", Color=Color3.fromRGB(255,60,0), Size=Vector3.new(2,2,2), Pattern="Spiral"},
+        {Name="InfernoSphere", Color=Color3.fromRGB(255,40,0), Size=Vector3.new(3,3,3), Pattern="Straight"},
+        {Name="FlameTornado", Color=Color3.fromRGB(255,90,0), Size=Vector3.new(1,5,1), Pattern="Tornado"},
+        {Name="PhoenixStrike", Color=Color3.fromRGB(255,70,0), Size=Vector3.new(2,4,2), Pattern="Curve"},
+        Ult = {Name="InfernoUlt", Color=Color3.fromRGB(255,0,0)}
+    },
+    Blue = {
+        {Name="IceShard", Color=Color3.fromRGB(0,100,255), Size=Vector3.new(2,2,2), Pattern="Straight"},
+        {Name="FrostWhip", Color=Color3.fromRGB(50,150,255), Size=Vector3.new(1,4,1), Pattern="Spiral"},
+        {Name="BlizzardSpike", Color=Color3.fromRGB(0,50,255), Size=Vector3.new(1,3,1), Pattern="Zigzag"},
+        {Name="SnowMeteor", Color=Color3.fromRGB(0,100,200), Size=Vector3.new(3,3,3), Pattern="Downward"},
+        {Name="IceBall", Color=Color3.fromRGB(100,150,255), Size=Vector3.new(2,2,2), Pattern="Straight"},
+        {Name="FrostWave", Color=Color3.fromRGB(0,150,255), Size=Vector3.new(5,1,1), Pattern="Wave"},
+        {Name="BlizzardStar", Color=Color3.fromRGB(50,100,255), Size=Vector3.new(2,2,2), Pattern="Spiral"},
+        {Name="IceSphere", Color=Color3.fromRGB(0,50,200), Size=Vector3.new(3,3,3), Pattern="Straight"},
+        {Name="FrostTornado", Color=Color3.fromRGB(0,150,255), Size=Vector3.new(1,5,1), Pattern="Tornado"},
+        {Name="GlacierStrike", Color=Color3.fromRGB(0,100,255), Size=Vector3.new(2,4,2), Pattern="Curve"},
+        Ult = {Name="BlizzardUlt", Color=Color3.fromRGB(0,0,255)}
+    },
+    Green = {
+        {Name="LeafBlade", Color=Color3.fromRGB(0,255,0), Size=Vector3.new(2,2,2), Pattern="Straight"},
+        {Name="VineWhip", Color=Color3.fromRGB(50,255,50), Size=Vector3.new(1,4,1), Pattern="Spiral"},
+        {Name="SpikeTrap", Color=Color3.fromRGB(0,200,0), Size=Vector3.new(1,3,1), Pattern="Zigzag"},
+        {Name="NatureMeteor", Color=Color3.fromRGB(0,150,50), Size=Vector3.new(3,3,3), Pattern="Downward"},
+        {Name="PoisonBall", Color=Color3.fromRGB(0,255,50), Size=Vector3.new(2,2,2), Pattern="Straight"},
+        {Name="RootWave", Color=Color3.fromRGB(0,200,50), Size=Vector3.new(5,1,1), Pattern="Wave"},
+        {Name="GreenStar", Color=Color3.fromRGB(50,255,50), Size=Vector3.new(2,2,2), Pattern="Spiral"},
+        {Name="NatureSphere", Color=Color3.fromRGB(0,150,0), Size=Vector3.new(3,3,3), Pattern="Straight"},
+        {Name="RootTornado", Color=Color3.fromRGB(50,200,50), Size=Vector3.new(1,5,1), Pattern="Tornado"},
+        {Name="ForestStrike", Color=Color3.fromRGB(0,255,50), Size=Vector3.new(2,4,2), Pattern="Curve"},
+        Ult = {Name="NatureUlt", Color=Color3.fromRGB(0,255,0)}
+    }
+}
+
+-- FireProjectile
+local function FireProjectile(attack)
+    local char = LocalPlayer.Character
+    if char and char.PrimaryPart then
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        local origHealth = humanoid.Health
+        local conn = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+            humanoid.Health = origHealth
+        end)
+
+        local proj = Instance.new("Part",workspace)
+        proj.Size = attack.Size
+        proj.Shape = Enum.PartType.Ball
+        proj.Color = attack.Color
+        proj.Anchored = false
+        proj.CanCollide = false
+        proj.Transparency = 0
+        proj.CFrame = char.PrimaryPart.CFrame * CFrame.new(0,1,2)
+
+        local bv = Instance.new("BodyVelocity",proj)
+        bv.MaxForce = Vector3.new(1e5,1e5,1e5)
+        bv.Velocity = char.PrimaryPart.CFrame.LookVector*60
+
+        local trail = Instance.new("Trail",proj)
+        trail.Attachment0 = Instance.new("Attachment",proj)
+        trail.Attachment1 = Instance.new("Attachment",proj)
+        trail.Color = ColorSequence.new(attack.Color)
+        trail.Lifetime = 0.4
+        trail.Transparency = NumberSequence.new(0,1)
+        trail.MinLength = 0.5
+
+        local ps = Instance.new("ParticleEmitter",proj)
+        ps.Color = ColorSequence.new(attack.Color)
+        ps.Rate = 30
+        ps.Lifetime = NumberRange.new(0.3,0.7)
+        ps.Speed = NumberRange.new(2,4)
+        ps.Size = NumberSequence.new(1,0)
+        ps.Texture = "rbxassetid://243098098"
+
+        Debris:AddItem(proj,3)
+
+        local step = 0
+        RunService.RenderStepped:Connect(function(dt)
+            if proj.Parent then
+                step = step + dt*10
+                if attack.Pattern=="Spiral" then
+                    proj.CFrame = proj.CFrame + bv.Velocity*dt + Vector3.new(math.sin(step),0,math.cos(step))
+                elseif attack.Pattern=="Zigzag" then
+                    proj.CFrame = proj.CFrame + bv.Velocity*dt + Vector3.new(math.sin(step*5)*0.5,0,0)
+                elseif attack.Pattern=="Wave" then
+                    proj.CFrame = proj.CFrame + bv.Velocity*dt + Vector3.new(0,math.sin(step*5)*0.5,0)
+                elseif attack.Pattern=="Curve" then
+                    proj.CFrame = proj.CFrame + bv.Velocity*dt + Vector3.new(math.sin(step*2)*0.3,0,math.cos(step*2)*0.3)
+                elseif attack.Pattern=="Downward" then
+                    proj.CFrame = proj.CFrame + bv.Velocity*dt + Vector3.new(0,-math.sin(step*5)*0.5,0)
+                else
+                    proj.CFrame = proj.CFrame + bv.Velocity*dt
+                end
+            end
+        end)
+
+        proj.Touched:Connect(function(hit)
+            if hit.Parent:FindFirstChildOfClass("Humanoid") and hit.Parent ~= char then
+                hit.Parent.Humanoid.Health = hit.Parent.Humanoid.Health - 10
+                local exp = Instance.new("Explosion",workspace)
+                exp.Position = proj.Position
+                exp.BlastRadius = 3
+                exp.BlastPressure = 5000
+                proj:Destroy()
+            end
+        end)
+
+        task.delay(3,function() conn:Disconnect() end)
+    end
+end
+
+-- FireEpicUlt
+local function FireUlt(ult)
+    local char = LocalPlayer.Character
+    if char and char.PrimaryPart then
+        local function ShakeCamera()
+            local cam = workspace.CurrentCamera
+            local orig = cam.CFrame
+            for i=1,10 do
+                cam.CFrame = orig * CFrame.new(Vector3.new(math.random()-0.5,math.random()-0.5,math.random()-0.5))
+                task.wait(0.03)
+            end
+            cam.CFrame = orig
+        end
+
+        for i=1,50 do
+            local proj = Instance.new("Part", workspace)
+            proj.Size = Vector3.new(2,2,2)
+            proj.Anchored = false
+            proj.CanCollide = false
+            proj.CFrame = char.PrimaryPart.CFrame * CFrame.new(math.random(-5,5), math.random(1,5), math.random(-5,5))
+            proj.Color = ult.Color
+            proj.Transparency = 0
+            local bv = Instance.new("BodyVelocity", proj)
+            bv.Velocity = Vector3.new(math.random(-30,30), math.random(20,50), math.random(-30,30))
+            bv.MaxForce = Vector3.new(1e5,1e5,1e5)
+            local trail = Instance.new("Trail", proj)
+            trail.Attachment0 = Instance.new("Attachment", proj)
+            trail.Attachment1 = Instance.new("Attachment", proj)
+            trail.Color = ColorSequence.new(ult.Color)
+            trail.Lifetime = 0.5
+            trail.Transparency = NumberSequence.new(0,1)
+            trail.MinLength = 0.5
+            local ps = Instance.new("ParticleEmitter", proj)
+            ps.Color = ColorSequence.new(ult.Color)
+            ps.Rate = 50
+            ps.Lifetime = NumberRange.new(0.3,0.7)
+            ps.Speed = NumberRange.new(10,20)
+            ps.Size = NumberSequence.new(1,0)
+            ps.Texture = "rbxassetid://243098098"
+            Debris:AddItem(proj,3)
+        end
+
+        local exp = Instance.new("Explosion", workspace)
+        exp.Position = char.PrimaryPart.Position
+        exp.BlastRadius = 15
+        exp.BlastPressure = 0
+        exp.DestroyJointRadiusPercent = 0
+
+        ShakeCamera()
+    end
+end
+
+-- GUI + Tabs + Buttons
+local function SetupGUI()
+    local ScreenGui = PlayerGui:FindFirstChild("MorphMenu") or Instance.new("ScreenGui", PlayerGui)
+    ScreenGui.Name = "MorphMenu"
+
+    local ToggleButton = ScreenGui:FindFirstChild("ToggleButton") or Instance.new("TextButton", ScreenGui)
+    ToggleButton.Name = "ToggleButton"
+    ToggleButton.Size = UDim2.new(0,120,0,50)
+    ToggleButton.Position = UDim2.new(0,10,0,10)
+    ToggleButton.BackgroundColor3 = Color3.fromRGB(80,80,80)
+    ToggleButton.TextColor3 = Color3.fromRGB(255,255,255)
+    ToggleButton.Text = "Toggle Menu"
+
+    local Frame = ScreenGui:FindFirstChild("Frame") or Instance.new("Frame",ScreenGui)
+    Frame.Name = "Frame"
+    Frame.Size = UDim2.new(0,400,0,500)
+    Frame.Position = UDim2.new(0,10,0,70)
+    Frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+
+    local Scroll = Frame:FindFirstChild("Scroll") or Instance.new("ScrollingFrame",Frame)
+    Scroll.Name = "Scroll"
+    Scroll.Size = UDim2.new(1,-10,1,-50)
+    Scroll.Position = UDim2.new(0,5,0,45)
+    Scroll.CanvasSize = UDim2.new(0,0,0,0)
+    Scroll.ScrollBarThickness = 8
+    Scroll.BackgroundTransparency = 1
+
+    -- Drag
+    local dragging, dragInput, mousePos, framePos = false, nil, nil, nil
+    Frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            mousePos = input.Position
+            framePos = Frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    Frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+    RunService.RenderStepped:Connect(function()
+        if dragging and dragInput then
+            local delta = dragInput.Position - mousePos
+            Frame.Position = UDim2.new(
+                0, math.clamp(framePos.X.Offset + delta.X,0,workspace.CurrentCamera.ViewportSize.X - Frame.AbsoluteSize.X),
+                0, math.clamp(framePos.Y.Offset + delta.Y,0,workspace.CurrentCamera.ViewportSize.Y - Frame.AbsoluteSize.Y)
+            )
+        end
+    end)
+
+    ToggleButton.MouseButton1Click:Connect(function()
+        Frame.Visible = not Frame.Visible
+    end)
+
+    -- Tabs
+    local TabFrame = Instance.new("Frame", Frame)
+    TabFrame.Size = UDim2.new(1,0,0,40)
+    TabFrame.Position = UDim2.new(0,0,0,0)
+    TabFrame.BackgroundTransparency = 1
+
+    local AuraList = {"Red","Blue","Green"}
+
+    local function ShowAura(aura)
+        CurrentAura = aura
+        for _,child in pairs(Scroll:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+
+        local char = LocalPlayer.Character
+        if char and char.PrimaryPart then
+            local glow = char:FindFirstChild("AuraGlow")
+            if not glow then
+                glow = Instance.new("SelectionBox", char.PrimaryPart)
+                glow.Name = "AuraGlow"
+                glow.Adornee = char.PrimaryPart
+            end
+            if aura=="Red" then glow.Color3 = Color3.fromRGB(255,0,0)
+            elseif aura=="Blue" then glow.Color3 = Color3.fromRGB(0,0,255)
+            elseif aura=="Green" then glow.Color3 = Color3.fromRGB(0,255,0) end
+        end
+
+        local xOffset, yOffset, col = 0,0,0
+        local buttonSize = UDim2.new(0,100,0,40)
+        local padding = 5
+        local data = AttackData[aura]
+        for i,atk in pairs(data) do
+            if i~="Ult" then
+                local btn = Instance.new("TextButton", Scroll)
+                btn.Size = buttonSize
+                btn.Position = UDim2.new(0,xOffset,0,yOffset)
+                btn.Text = atk.Name
+                btn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+                btn.TextColor3 = Color3.fromRGB(255,255,255)
+                btn.MouseButton1Click:Connect(function() FireProjectile(atk) end)
+                col = col+1
+                xOffset = xOffset + buttonSize.X.Offset + padding
+                if col>=3 then col=0; xOffset=0; yOffset=yOffset+buttonSize.Y.Offset+padding end
+            end
+        end
+        local ultBtn = Instance.new("TextButton", Scroll)
+        ultBtn.Size = buttonSize
+        ultBtn.Position = UDim2.new(0,xOffset,0,yOffset)
+        ultBtn.Text = data.Ult.Name
+        ultBtn.BackgroundColor3 = Color3.fromRGB(255,215,0)
+        ultBtn.TextColor3 = Color3.fromRGB(0,0,0)
+        ultBtn.MouseButton1Click:Connect(function() FireUlt(data.Ult) end)
+        Scroll.CanvasSize = UDim2.new(0,0,yOffset+buttonSize.Y.Offset,0)
+    end
+
+    for i,aura in ipairs(AuraList) do
+        local tab = Instance.new("TextButton", TabFrame)
+        tab.Size = UDim2.new(0,120,1,0)
+        tab.Position = UDim2.new(0,(i-1)*120,0,0)
+        tab.Text = aura
+        tab.BackgroundColor3 = Color3.fromRGB(60,60,60)
+        tab.TextColor3 = Color3.fromRGB(255,255,255)
+        tab.MouseButton1Click:Connect(function() ShowAura(aura) end)
+    end
+
+    ShowAura("Red")
+end
+
+SetupGUI()
+LocalPlayer.CharacterAdded:Connect(function() task.wait(0.5) SetupGUI() end)
+]])()

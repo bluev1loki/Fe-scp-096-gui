@@ -1,0 +1,222 @@
+loadstring([[
+--================================================--
+-- ANIME GOD PACK – OMNIVERSE AUTO-COMBO MODE
+--================================================--
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild("PlayerGui")
+local character = player.Character or player.CharacterAdded:Wait()
+local workspace = game:GetService("Workspace")
+local Debris = game:GetService("Debris")
+local RunService = game:GetService("RunService")
+local camera = workspace.CurrentCamera
+
+-- Morphs & Abilities
+local Morphs = {
+    DevilGod={Color=Color3.fromRGB(255,50,0),Size=6},
+    HolyGod={Color=Color3.fromRGB(255,255,200),Size=6},
+    VoidGod={Color=Color3.fromRGB(120,0,255),Size=6},
+    UniversalGod={Color=Color3.fromRGB(0,170,255),Size=6},
+    MultiGod={Color=Color3.fromRGB(255,0,255),Size=6},
+    OmniverseGod={Color=Color3.fromRGB(255,255,255),Size=8}
+}
+
+-- GUI Setup
+local ScreenGui = Instance.new("ScreenGui", PlayerGui)
+ScreenGui.Name="MorphGUI"
+ScreenGui.ResetOnSpawn=false
+local MenuFrame = Instance.new("Frame", ScreenGui)
+MenuFrame.Size = UDim2.new(0,300,0,450)
+MenuFrame.Position = UDim2.new(0.05,0,0.2,0)
+MenuFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+MenuFrame.BackgroundTransparency = 0.2
+MenuFrame.Visible=true
+
+-- Labels
+local function createLabel(text,pos,color)
+    local lbl = Instance.new("TextLabel",ScreenGui)
+    lbl.Size=UDim2.new(0,200,0,40)
+    lbl.Position=pos
+    lbl.TextScaled=true
+    lbl.BackgroundTransparency=0.3
+    lbl.BackgroundColor3=Color3.fromRGB(0,0,0)
+    lbl.TextColor3=color
+    lbl.Text=text
+    return lbl
+end
+local powerLabel = createLabel("Aura Power: 1",UDim2.new(0.8,0,0.9,0),Color3.fromRGB(255,255,0))
+local chainLabel = createLabel("Chain: 0",UDim2.new(0.8,0,0.85,0),Color3.fromRGB(255,0,0))
+local damageLabel = createLabel("Damage Pulse: 0",UDim2.new(0.8,0,0.8,0),Color3.fromRGB(0,255,255))
+
+local chainCount=0
+local powerLevel=1
+local auraActive=false
+local auraParts={}
+
+-- Aura
+local function createAura(color,size)
+    local part=Instance.new("Part",workspace)
+    part.Anchored=true
+    part.CanCollide=false
+    part.Transparency=0.5
+    part.Material=Enum.Material.Neon
+    part.Color=color
+    part.Size=Vector3.new(size,size,size)
+    table.insert(auraParts,part)
+end
+
+RunService.RenderStepped:Connect(function()
+    if auraActive then
+        local t=tick()
+        for i,part in pairs(auraParts) do
+            local r=(math.sin(t*3+i)+1)/2
+            local g=(math.sin(t*2+1+i)+1)/2
+            local b=(math.sin(t*4+2+i)+1)/2
+            part.Color=Color3.new(r,g,b)
+            part.CFrame=CFrame.new(character.HumanoidRootPart.Position)
+        end
+    end
+end)
+
+-- Projektil + Explosion + Sound
+local function fireAnimeProjectile(index,preset,direction)
+    local proj=Instance.new("Part",workspace)
+    proj.Anchored=false
+    proj.CanCollide=false
+    proj.Shape=index%2==0 and Enum.PartType.Ball or Enum.PartType.Cylinder
+    proj.Size=Vector3.new(1+index*0.3,1+index*0.3,1+index*0.3)
+    proj.CFrame=CFrame.new(character.HumanoidRootPart.Position, character.HumanoidRootPart.Position+direction)
+    proj.Color=preset.Color
+    proj.Material=Enum.Material.Neon
+    local bv=Instance.new("BodyVelocity",proj)
+    bv.MaxForce=Vector3.new(1e5,1e5,1e5)
+    bv.Velocity=direction*(40+chainCount*3)
+    Debris:AddItem(proj,3)
+
+    local pe=Instance.new("ParticleEmitter",proj)
+    pe.Texture="rbxassetid://243660364"
+    pe.Lifetime=NumberRange.new(0.2,0.6)
+    pe.Rate=200+index*10
+    pe.Speed=NumberRange.new(15+index,35)
+    pe.Size=NumberSequence.new({NumberSequenceKeypoint.new(0,0.5+index*0.05),NumberSequenceKeypoint.new(1,0)})
+
+    local light=Instance.new("PointLight",proj)
+    light.Color=proj.Color
+    light.Range=20+index
+    light.Brightness=3
+
+    local fireSound=Instance.new("Sound",proj)
+    fireSound.SoundId="rbxassetid://911882514"
+    fireSound.Volume=1
+    fireSound:Play()
+
+    delay(0.5,function()
+        local explosion=Instance.new("Explosion",workspace)
+        explosion.Position=proj.Position
+        explosion.BlastRadius=10+index
+        explosion.BlastPressure=500000
+        explosion.ExplosionType=Enum.ExplosionType.NoCraters
+        explosion.DestroyJointRadiusPercent=0
+        local boomSound=Instance.new("Sound",workspace)
+        boomSound.SoundId="rbxassetid://138186576"
+        boomSound.Volume=1.5
+        boomSound.PlayOnRemove=true
+        boomSound:Destroy()
+        Debris:AddItem(explosion,1)
+        proj:Destroy()
+    end)
+end
+
+-- Auto-Combo ULT
+local autoComboBtn=Instance.new("TextButton",MenuFrame)
+autoComboBtn.Size=UDim2.new(1,-20,0,50)
+autoComboBtn.Position=UDim2.new(0,10,0,10)
+autoComboBtn.Text="OMNIVERSE AUTO-COMBO"
+autoComboBtn.TextScaled=true
+autoComboBtn.BackgroundColor3=Color3.fromRGB(255,50,50)
+autoComboBtn.TextColor3=Color3.fromRGB(255,255,255)
+
+autoComboBtn.MouseButton1Click:Connect(function()
+    auraActive=true
+    for name,preset in pairs(Morphs) do
+        createAura(preset.Color,preset.Size)
+    end
+
+    local targets={}
+    for _,plr in pairs(Players:GetPlayers()) do
+        if plr~=player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local dist=(plr.Character.HumanoidRootPart.Position-character.HumanoidRootPart.Position).Magnitude
+            if dist<=60 then table.insert(targets,plr.Character.HumanoidRootPart.Position) end
+        end
+    end
+
+    -- Kamera Animation + Shake
+    local origCF=camera.CFrame
+    spawn(function()
+        local t0=tick()
+        while tick()-t0<5 do
+            camera.CFrame=origCF*CFrame.new(math.random(-3,3),math.random(-2,2),math.random(-3,3))*CFrame.Angles(0,math.rad(math.random(0,360)),0)
+            RunService.RenderStepped:Wait()
+        end
+        camera.CFrame=origCF
+    end)
+
+    -- Mega Auto-Projektils auf alle Targets
+    for idx=1,30 do
+        chainCount+=1
+        powerLevel=math.min(10,powerLevel+0.5)
+        powerLabel.Text="Aura Power: "..string.format("%.1f",powerLevel)
+        chainLabel.Text="Chain: "..chainCount
+        for name,preset in pairs(Morphs) do
+            for _,pos in pairs(targets) do
+                local dir=(pos-character.HumanoidRootPart.Position).Unit
+                fireAnimeProjectile(idx,preset,dir)
+            end
+        end
+    end
+
+    -- Partikelwolken + Lichtstrahlen
+    spawn(function()
+        local ptime=0
+        while ptime<5 do
+            local part=Instance.new("Part",workspace)
+            part.Anchored=true
+            part.CanCollide=false
+            part.Material=Enum.Material.Neon
+            part.Color=Color3.fromHSV(math.random(),1,1)
+            part.Size=Vector3.new(3,3,3)
+            part.CFrame=CFrame.new(character.HumanoidRootPart.Position+Vector3.new(math.random(-10,10),math.random(0,10),math.random(-10,10)))
+            local pe=Instance.new("ParticleEmitter",part)
+            pe.Texture="rbxassetid://243660364"
+            pe.Lifetime=NumberRange.new(0.5,1)
+            pe.Rate=200
+            pe.Speed=NumberRange.new(10,20)
+            Debris:AddItem(part,1)
+            ptime+=0.05
+            wait(0.03)
+        end
+    end)
+
+    delay(6,function()
+        auraActive=false
+        for _,part in pairs(auraParts) do
+            part:Destroy()
+        end
+        auraParts={}
+    end)
+end)
+
+-- Toggle/Katsche
+local toggleBtn=Instance.new("TextButton",ScreenGui)
+toggleBtn.Size=UDim2.new(0,60,0,60)
+toggleBtn.Position=UDim2.new(0,20,0,20)
+toggleBtn.Text="☰"
+toggleBtn.TextScaled=true
+toggleBtn.BackgroundColor3=Color3.fromRGB(50,50,50)
+toggleBtn.TextColor3=Color3.fromRGB(255,255,255)
+local menuOpen=true
+toggleBtn.MouseButton1Click:Connect(function()
+    menuOpen=not menuOpen
+    MenuFrame.Visible=menuOpen
+end)
+]])()
